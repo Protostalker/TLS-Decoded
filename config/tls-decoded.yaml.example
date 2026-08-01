@@ -1,0 +1,57 @@
+# Copy this file to tls-decoded.yaml and fill in your station's real details:
+#   cp config/tls-decoded.yaml.example config/tls-decoded.yaml
+#
+# tls-decoded.yaml is gitignored on purpose — it holds your station's address,
+# phone number, and local network layout, so `git pull` will never touch it
+# and you'll never accidentally publish it.
+#
+# Note: as of the settings/tank-editing update, poll interval, alignment,
+# device ID, and tank capacity/reorder-threshold can all be edited live from
+# the dashboard (gear icon) once the app is running — they're stored in the
+# database and only fall back to the values below the very first time a tank
+# or setting is created.
+
+station:
+  name: "Your Station Name"
+  address: "Street, City, ST ZIP"
+  phone: "555-555-5555"
+  station_id: "000000"
+  tanks:
+    - id: 1
+      name: "Unleaded"
+      capacity_gallons: 12000       # rough estimate is fine — correct it later from the dashboard
+      product: "Unleaded"
+      reorder_threshold_gallons: 2000
+    - id: 2
+      name: "Super"
+      capacity_gallons: 12000
+      product: "Super"
+      reorder_threshold_gallons: 1500
+    - id: 3
+      name: "Diesel"
+      capacity_gallons: 12000
+      product: "Diesel"
+      reorder_threshold_gallons: 1500
+
+# StarTech (or similar) serial-to-Ethernet adapter in TCP Server mode.
+# Set a DHCP reservation for the adapter's MAC address on your router so its
+# IP stays fixed and matches `host` below.
+network:
+  host: "192.168.0.250"
+  port: 5000
+  timeout_seconds: 5
+  mock: false   # set true to run against generated fake data instead of live hardware
+
+polling:
+  mode: "interval"          # legacy — the dashboard's Settings panel now controls this live
+  interval_minutes: 60      # initial default poll interval, in minutes
+  schedule_times: []        # unused now; kept for backwards compatibility
+
+analytics:
+  consumption_window_hours: 168   # 7-day rolling window for consumption-rate calc
+  delivery_detection_jump_gallons: 200  # volume increase >= this = possible delivery
+
+remote:
+  enabled: false
+  server_url: ""
+  device_id: ""   # leave blank — a random 32-char hex ID is generated automatically

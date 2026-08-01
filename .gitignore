@@ -1,0 +1,26 @@
+# ── Secrets / local config ──────────────────────────────────────────────────
+.env
+config/tls-decoded.yaml
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ── Node / frontend ──────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/node_modules/
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+*.pid
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+probe_output.txt
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

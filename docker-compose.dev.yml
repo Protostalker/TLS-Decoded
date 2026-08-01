@@ -1,0 +1,38 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ./api
+      target: development
+    volumes:
+      - ./api:/app:ro
+      - ./config:/app/config:ro
+    environment:
+      DATABASE_URL: postgresql://tls:${DB_PASSWORD:-tls_local}@db:5432/tls_decoded
+      DEBUG: "true"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  poller:
+    build:
+      context: ./poller
+      target: development
+    volumes:
+      - ./poller:/app:ro
+      - ./config:/app/config:ro
+    environment:
+      DATABASE_URL: postgresql://tls:${DB_PASSWORD:-tls_local}@db:5432/tls_decoded
+      API_URL: http://api:8000
+      DEBUG: "true"
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    ports:
+      - "3000:5173"
+    volumes:
+      - ./frontend/src:/app/src
+    command: npm run dev -- --host 0.0.0.0
