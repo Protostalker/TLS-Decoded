@@ -44,6 +44,7 @@ def startup_event():
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS merged_poll_count INTEGER DEFAULT 1",
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS session_started_at TIMESTAMPTZ",
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS note TEXT",
+        "ALTER TABLE fuel_prices ADD COLUMN IF NOT EXISTS tax_rate_percent NUMERIC(9,4)",
     ]
     with engine.begin() as conn:
         for m in migrations:

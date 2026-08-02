@@ -16,11 +16,15 @@ function money(n, digits = 3) {
   return n == null ? '—' : `$${Number(n).toFixed(digits)}`
 }
 
+function toLocalInputValue(d) {
+  const copy = new Date(d)
+  copy.setSeconds(0, 0)
+  copy.setMinutes(copy.getMinutes() - copy.getTimezoneOffset())
+  return copy.toISOString().slice(0, 16)
+}
+
 function nowLocalInputValue() {
-  const d = new Date()
-  d.setSeconds(0, 0)
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
-  return d.toISOString().slice(0, 16)
+  return toLocalInputValue(new Date())
 }
 
 function Tile({ label, value, accent, sub }) {
@@ -40,12 +44,16 @@ function Tile({ label, value, accent, sub }) {
 
 function PriceForm({ tank, initial, onDone, onCancel }) {
   const [cost, setCost] = useState(initial?.cost_per_gallon ?? '')
-  const [tax, setTax] = useState(initial?.tax_fees_per_gallon ?? '')
+  const [taxRate, setTaxRate] = useState(initial?.tax_rate_percent ?? '')
   const [sale, setSale] = useState(initial?.sale_price_per_gallon ?? '')
-  const [when, setWhen] = useState(nowLocalInputValue())
+  const [when, setWhen] = useState(initial ? toLocalInputValue(initial.effective_at) : nowLocalInputValue())
   const [note, setNote] = useState(initial?.note ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
+
+  const taxDollars = (cost !== '' && taxRate !== '')
+    ? (Number(cost) * Number(taxRate) / 100)
+    : null
 
   const submit = async () => {
     if (cost === '' || sale === '') { setErr('Cost and sale price are required'); return }
@@ -53,17 +61,14 @@ function PriceForm({ tank, initial, onDone, onCancel }) {
     try {
       const body = {
         cost_per_gallon: Number(cost),
-        tax_fees_per_gallon: Number(tax || 0),
+        tax_rate_percent: taxRate === '' ? null : Number(taxRate),
         sale_price_per_gallon: Number(sale),
+        effective_at: when,
         note: note || undefined,
       }
-      let result
-      if (initial) {
-        result = await api.updatePrice(initial.id, body)
-      } else {
-        body.effective_at = when
-        result = await api.addPrice(tank.id, body)
-      }
+      const result = initial
+        ? await api.updatePrice(initial.id, body)
+        : await api.addPrice(tank.id, body)
       onDone(result)
     } catch (e) {
       setErr(e.message)
@@ -84,21 +89,25 @@ function PriceForm({ tank, initial, onDone, onCancel }) {
             placeholder="4.000000" style={inputStyle} />
         </div>
         <div style={{ width: 130 }}>
-          <div style={fieldLabel}>Tax + fees / gal</div>
-          <input type="number" step="0.000001" min={0} value={tax} onChange={e => setTax(e.target.value)}
-            placeholder="0.400000" style={inputStyle} />
+          <div style={fieldLabel}>Tax rate (%)</div>
+          <input type="number" step="0.0001" min={0} value={taxRate} onChange={e => setTaxRate(e.target.value)}
+            placeholder="e.g. 9.75" style={inputStyle} />
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
+            {taxDollars != null ? `≈ $${taxDollars.toFixed(6)}/gal` : 'leave blank for $0 tax'}
+          </div>
         </div>
         <div style={{ width: 130 }}>
           <div style={fieldLabel}>Sale price / gal</div>
           <input type="number" step="0.000001" min={0} value={sale} onChange={e => setSale(e.target.value)}
             placeholder="4.999000" style={inputStyle} />
         </div>
-        {!initial && (
-          <div style={{ width: 190 }}>
-            <div style={fieldLabel}>Effective from</div>
-            <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} style={inputStyle} />
+        <div style={{ width: 190 }}>
+          <div style={fieldLabel}>Effective from</div>
+          <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} style={inputStyle} />
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
+            pick a past date to backdate (catching up on missed entries)
           </div>
-        )}
+        </div>
         <div style={{ flex: 1, minWidth: 140 }}>
           <div style={fieldLabel}>Note (optional)</div>
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
@@ -179,7 +188,11 @@ export default function PricingPanel({ tank }) {
       {current && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
           <Tile label="Cost" value={money(current.cost_per_gallon, 4)} />
-          <Tile label="Tax + fees" value={money(current.tax_fees_per_gallon, 4)} />
+          <Tile
+            label="Tax + fees"
+            value={money(current.tax_fees_per_gallon, 4)}
+            sub={current.tax_rate_percent != null ? `${current.tax_rate_percent}% of cost` : null}
+          />
           <Tile label="Breakeven" value={money(current.breakeven_per_gallon, 4)} />
           <Tile label="Sale price" value={money(current.sale_price_per_gallon, 4)} accent="#93c5fd" />
           <Tile label="Margin / gal" value={money(current.margin_per_gallon, 4)} accent={marginColor} />
@@ -204,7 +217,7 @@ export default function PricingPanel({ tank }) {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                 <div style={{ fontSize: 12, color: '#cbd5e1' }}>
-                  cost {money(h.cost_per_gallon, 4)} · tax {money(h.tax_fees_per_gallon, 4)} · sale {money(h.sale_price_per_gallon, 4)}
+                  cost {money(h.cost_per_gallon, 4)} · tax {h.tax_rate_percent != null ? `${h.tax_rate_percent}% (${money(h.tax_fees_per_gallon, 4)})` : money(h.tax_fees_per_gallon, 4)} · sale {money(h.sale_price_per_gallon, 4)}
                   {' · '}
                   <span style={{ color: h.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
                     margin {money(h.margin_per_gallon, 4)}

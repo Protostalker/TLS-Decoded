@@ -111,7 +111,8 @@ class FuelPriceOut(BaseModel):
     tank_id: int
     effective_at: datetime
     cost_per_gallon: float
-    tax_fees_per_gallon: float
+    tax_rate_percent: Optional[float] = None
+    tax_fees_per_gallon: float  # dollar amount — derived from tax_rate_percent when a rate is set
     sale_price_per_gallon: float
     source: str
     note: Optional[str] = None
@@ -123,14 +124,20 @@ class FuelPriceOut(BaseModel):
 
 class FuelPriceCreate(BaseModel):
     cost_per_gallon: float
-    tax_fees_per_gallon: float = 0.0
     sale_price_per_gallon: float
+    # Preferred: a rate like 9.75 for 9.75% — tax_fees_per_gallon is computed
+    # automatically as cost_per_gallon * tax_rate_percent / 100. If you leave
+    # tax_rate_percent blank, tax_fees_per_gallon (if provided) is used as-is
+    # for cases like a flat excise fee that isn't proportional to cost.
+    tax_rate_percent: Optional[float] = None
+    tax_fees_per_gallon: Optional[float] = None
     effective_at: Optional[datetime] = None
     note: Optional[str] = None
 
 
 class FuelPriceUpdate(BaseModel):
     cost_per_gallon: Optional[float] = None
+    tax_rate_percent: Optional[float] = None
     tax_fees_per_gallon: Optional[float] = None
     sale_price_per_gallon: Optional[float] = None
     effective_at: Optional[datetime] = None

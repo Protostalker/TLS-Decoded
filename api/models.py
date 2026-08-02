@@ -93,7 +93,12 @@ class FuelPrice(Base):
     tank_id: Mapped[int] = mapped_column(Integer, ForeignKey("tanks.id"))
     effective_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     cost_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    # Tax/fees per gallon, in dollars — derived automatically from
+    # tax_rate_percent * cost_per_gallon when a rate is set (the normal
+    # path), or set directly for edge cases (e.g. a flat excise fee) when
+    # tax_rate_percent is left blank.
     tax_fees_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6), default=0)
+    tax_rate_percent: Mapped[float | None] = mapped_column(Numeric(9, 4))
     sale_price_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
     source: Mapped[str] = mapped_column(Text, default="manual")
     note: Mapped[str | None] = mapped_column(Text)
