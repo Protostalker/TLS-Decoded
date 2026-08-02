@@ -438,8 +438,9 @@ class Poller:
 
     # If the tank's most recent open (not manually confirmed) delivery session
     # was still active this recently, a new jump is treated as a continuation
-    # of the same fill-up rather than a brand new delivery.
-    MERGE_WINDOW_MINUTES = 90
+    # of the same fill-up rather than a brand new delivery. Some deliveries at
+    # this station run up to ~2 hours, so this needs to cover that fully.
+    MERGE_WINDOW_MINUTES = 120
     # Allow a little normal consumption between polls before deciding a new
     # jump doesn't actually connect to the prior session's end volume.
     MERGE_CONTIGUITY_TOLERANCE_GALLONS = 150

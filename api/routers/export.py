@@ -6,7 +6,7 @@ import io
 import os
 import re
 from calendar import monthrange
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,9 +18,39 @@ from models import DeliveryEvent, Reading, Tank
 
 router = APIRouter()
 
-# Station's local timezone — used to bucket readings/deliveries into calendar
-# days for the monthly ledger summary (Gardena, CA).
+# Station's local timezone — used to bucket readings/deliveries into
+# accounting days for the monthly ledger summary (Gardena, CA).
 STATION_TZ = ZoneInfo(os.environ.get("STATION_TZ", "America/Los_Angeles"))
+
+# The ledger's "day" doesn't roll over at midnight — it rolls over at this
+# local hour, matching the station's historical manual-reading convention
+# (a reading taken at/after this hour "closes the books" for the day whose
+# window just ended). Picked at 2am specifically because deliveries almost
+# never happen then, so a delivery essentially never straddles the boundary.
+LEDGER_DAY_ROLLOVER_HOUR = int(os.environ.get("LEDGER_ROLLOVER_HOUR", "2"))
+_ROLLOVER_TIME = dtime(LEDGER_DAY_ROLLOVER_HOUR, 0, 0)
+
+
+def _accounting_date(dt: datetime) -> date:
+    """
+    Map a UTC timestamp to the ledger "day" it belongs to.
+
+    A day's window is (rollover time on day N-1, rollover time on day N] —
+    i.e. GAL(day N) is the closing reading taken at day N's rollover time,
+    and anything after that rollover (the normal case for daytime deliveries)
+    belongs to the *next* day's window. This mirrors the station's original
+    manual process, where a delivery couldn't be confirmed/logged until the
+    following day's reading closed the books on it.
+    """
+    local = dt.astimezone(STATION_TZ)
+    if local.time() <= _ROLLOVER_TIME:
+        return local.date()
+    return local.date() + timedelta(days=1)
+
+
+def _rollover_at(d: date) -> datetime:
+    """The exact local rollover instant for calendar date `d`."""
+    return datetime.combine(d, _ROLLOVER_TIME, tzinfo=STATION_TZ)
 
 _KNOWN_ABBR = {
     "unleaded": "UNL", "regular": "UNL", "super": "SUP", "premium": "PRM",
@@ -112,8 +142,15 @@ def export_monthly_summary(
     Day-by-day ledger CSV shaped like the station's existing manual sheet:
     Day, {TANK}GAL..., {TANK}ADDED..., {TANK}SOLD..., TOTALGALSOLD
 
-    GAL   = closing (last) volume reading for that tank that calendar day
-    ADDED = gallons from detected deliveries that calendar day
+    The "day" here isn't a calendar day — it rolls over at
+    LEDGER_DAY_ROLLOVER_HOUR (2am local by default), matching the station's
+    historical manual-reading convention. Concretely:
+
+    GAL   = closing volume reading at/nearest-before that day's rollover time
+    ADDED = gallons from deliveries detected in the window ending at that
+            rollover — since deliveries almost always happen during the day
+            (after the rollover hour), they land on the *next* day's row,
+            same as the old manual process.
     SOLD  = opening_volume + ADDED - closing_volume (derived, not directly polled)
 
     Blank cells mean "no data for that tank/day" rather than a real zero.
@@ -125,18 +162,26 @@ def export_monthly_summary(
     abbrs = [_abbr(t.name) for t in tanks]
 
     last_day = monthrange(year, month)[1]
-    month_start_local = datetime(year, month, 1, tzinfo=STATION_TZ)
-    month_end_local = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=STATION_TZ)
-    query_start = month_start_local.astimezone(timezone.utc)
-    query_end = month_end_local.astimezone(timezone.utc)
+    first_date = date(year, month, 1)
+    last_date = date(year, month, last_day)
 
-    # Closing volume per tank per local day (last reading of that day wins).
-    closings: dict[int, dict[int, float]] = {tid: {} for tid in tank_ids}
+    # Ledger day N's window is (rollover(N-1), rollover(N)], so day 1 starts
+    # right after the rollover on the last day of the *previous* month, and
+    # the month's data ends at the rollover on this month's last day. Pad the
+    # query range a bit further on both sides so nothing at the edges gets
+    # missed regardless of poll timing.
+    query_start = (_rollover_at(first_date - timedelta(days=2))).astimezone(timezone.utc)
+    query_end = (_rollover_at(last_date + timedelta(days=1))).astimezone(timezone.utc)
+
+    # Closing volume per tank per ledger day (last reading in that day's
+    # window wins — which, since polling is clock-aligned, is normally the
+    # exact reading taken at the rollover instant).
+    closings: dict[int, dict[date, float]] = {tid: {} for tid in tank_ids}
     readings = (
         db.query(Reading)
         .filter(
             Reading.tank_id.in_(tank_ids),
-            Reading.polled_at >= query_start,
+            Reading.polled_at > query_start,
             Reading.polled_at <= query_end,
         )
         .order_by(Reading.polled_at.asc())
@@ -145,17 +190,17 @@ def export_monthly_summary(
     for r in readings:
         if r.volume_gallons is None:
             continue
-        local_day = r.polled_at.astimezone(STATION_TZ).day
-        closings[r.tank_id][local_day] = r.volume_gallons  # last write (asc order) wins
+        closings[r.tank_id][_accounting_date(r.polled_at)] = r.volume_gallons  # last write wins
 
-    # Opening balance for day 1 = most recent reading before the month started.
+    # Opening balance for day 1 = most recent reading before day 1's window started.
+    day1_window_start = _rollover_at(first_date - timedelta(days=1)).astimezone(timezone.utc)
     opening_carry: dict[int, float | None] = {}
     for t in tanks:
         prev = (
             db.query(Reading)
             .filter(
                 Reading.tank_id == t.id,
-                Reading.polled_at < query_start,
+                Reading.polled_at <= day1_window_start,
                 Reading.volume_gallons.isnot(None),
             )
             .order_by(Reading.polled_at.desc())
@@ -163,20 +208,22 @@ def export_monthly_summary(
         )
         opening_carry[t.id] = prev.volume_gallons if prev else None
 
-    # Deliveries (gallons added) per tank per local day.
-    added: dict[int, dict[int, float]] = {tid: {} for tid in tank_ids}
+    # Deliveries (gallons added) per tank per ledger day — a delivery starting
+    # anytime after a day's rollover (the normal case) lands on the next day.
+    added: dict[int, dict[date, float]] = {tid: {} for tid in tank_ids}
     deliveries = (
         db.query(DeliveryEvent)
         .filter(
             DeliveryEvent.tank_id.in_(tank_ids),
-            DeliveryEvent.detected_at >= query_start,
+            DeliveryEvent.detected_at > query_start,
             DeliveryEvent.detected_at <= query_end,
         )
         .all()
     )
     for d in deliveries:
-        local_day = d.detected_at.astimezone(STATION_TZ).day
-        added[d.tank_id][local_day] = added[d.tank_id].get(local_day, 0.0) + (d.gallons_received or 0.0)
+        gallons = d.manual_gallons_received if d.manual_gallons_received is not None else d.gallons_received
+        aday = _accounting_date(d.detected_at)
+        added[d.tank_id][aday] = added[d.tank_id].get(aday, 0.0) + (gallons or 0.0)
 
     header = (
         ["Day"]
@@ -187,14 +234,15 @@ def export_monthly_summary(
     )
 
     rows = []
-    for day in range(1, last_day + 1):
+    for day_num in range(1, last_day + 1):
+        d = date(year, month, day_num)
         gal_cells, added_cells, sold_cells = [], [], []
         day_total_sold = 0.0
         any_sold = False
 
         for t in tanks:
-            close = closings[t.id].get(day)
-            add = added[t.id].get(day, 0.0)
+            close = closings[t.id].get(d)
+            add = added[t.id].get(d, 0.0)
             opening = opening_carry.get(t.id)
 
             gal_cells.append(round(close) if close is not None else "")
@@ -211,7 +259,7 @@ def export_monthly_summary(
             if close is not None:
                 opening_carry[t.id] = close  # roll forward for the next day
 
-        row = [day] + gal_cells + added_cells + sold_cells
+        row = [day_num] + gal_cells + added_cells + sold_cells
         row.append(round(day_total_sold) if any_sold else "")
         rows.append(row)
 
