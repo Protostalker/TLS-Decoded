@@ -128,6 +128,7 @@ function PriceForm({ tank, initial, onDone, onCancel }) {
 export default function PricingPanel({ tank }) {
   const [current, setCurrent] = useState(null)
   const [history, setHistory] = useState([])
+  const [todayGallons, setTodayGallons] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -137,12 +138,14 @@ export default function PricingPanel({ tank }) {
     if (!tank) return
     setLoading(true); setError(null)
     try {
-      const [cur, hist] = await Promise.all([
+      const [cur, hist, stats] = await Promise.all([
         api.currentPrice(tank.id),
         api.priceHistory(tank.id, { limit: 8 }),
+        api.stats(tank.id).catch(() => null),
       ])
       setCurrent(cur)
       setHistory(hist)
+      setTodayGallons(stats?.today_consumed_gallons ?? null)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -182,6 +185,31 @@ export default function PricingPanel({ tank }) {
       {!loading && !error && !current && !showAddForm && (
         <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 12 }}>
           No pricing set yet — use "+ Update price" to enter cost, taxes/fees, and sale price
+        </div>
+      )}
+
+      {current && todayGallons != null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+          background: '#111827', border: '1px solid #2d3348', borderRadius: 10,
+          padding: '12px 14px', marginBottom: 12,
+        }}>
+          <div>
+            <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+              Today's profit (live)
+            </div>
+            <div style={{
+              fontSize: 26, fontWeight: 800,
+              color: current.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5',
+            }}>
+              {money(todayGallons * current.margin_per_gallon, 2)}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>
+            {todayGallons.toLocaleString(undefined, { maximumFractionDigits: 0 })} gal sold today
+            {' × '}
+            {money(current.margin_per_gallon, 4)} margin/gal
+          </div>
         </div>
       )}
 
