@@ -104,6 +104,39 @@ class TankUpdate(BaseModel):
     reorder_threshold_gallons: Optional[float] = None
 
 
+class FuelPriceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tank_id: int
+    effective_at: datetime
+    cost_per_gallon: float
+    tax_fees_per_gallon: float
+    sale_price_per_gallon: float
+    source: str
+    note: Optional[str] = None
+    # Computed, not stored:
+    breakeven_per_gallon: float
+    margin_per_gallon: float
+    margin_percent: Optional[float] = None
+
+
+class FuelPriceCreate(BaseModel):
+    cost_per_gallon: float
+    tax_fees_per_gallon: float = 0.0
+    sale_price_per_gallon: float
+    effective_at: Optional[datetime] = None
+    note: Optional[str] = None
+
+
+class FuelPriceUpdate(BaseModel):
+    cost_per_gallon: Optional[float] = None
+    tax_fees_per_gallon: Optional[float] = None
+    sale_price_per_gallon: Optional[float] = None
+    effective_at: Optional[datetime] = None
+    note: Optional[str] = None
+
+
 class SettingsOut(BaseModel):
     poll_interval_minutes: int
     poll_aligned: bool

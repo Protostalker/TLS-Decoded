@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import DeliveryEvent, Reading, Tank
+from models import DeliveryEvent, FuelPrice, Reading, Tank
 
 router = APIRouter()
 
@@ -225,20 +225,51 @@ def export_monthly_summary(
         aday = _accounting_date(d.detected_at)
         added[d.tank_id][aday] = added[d.tank_id].get(aday, 0.0) + (gallons or 0.0)
 
+    # Margin-per-gallon in effect on each ledger day, per tank — priced as of
+    # that day's rollover instant (the same boundary GAL/SOLD use), so a
+    # mid-month price change lines up with the day it actually took effect.
+    price_rows: dict[int, list[FuelPrice]] = {tid: [] for tid in tank_ids}
+    for p in (
+        db.query(FuelPrice)
+        .filter(FuelPrice.tank_id.in_(tank_ids), FuelPrice.effective_at <= query_end)
+        .order_by(FuelPrice.effective_at.asc())
+        .all()
+    ):
+        price_rows[p.tank_id].append(p)
+
+    def _margin_on(tank_id: int, boundary_utc: datetime) -> float | None:
+        applicable = None
+        for p in price_rows[tank_id]:
+            if p.effective_at <= boundary_utc:
+                applicable = p
+            else:
+                break
+        if applicable is None:
+            return None
+        cost = float(applicable.cost_per_gallon or 0)
+        tax = float(applicable.tax_fees_per_gallon or 0)
+        sale = float(applicable.sale_price_per_gallon or 0)
+        return sale - (cost + tax)
+
     header = (
         ["Day"]
         + [f"{a}GAL" for a in abbrs]
         + [f"{a}ADDED" for a in abbrs]
         + [f"{a}SOLD" for a in abbrs]
         + ["TOTALGALSOLD"]
+        + [f"{a}PROFIT" for a in abbrs]
+        + ["TOTALPROFIT"]
     )
 
     rows = []
     for day_num in range(1, last_day + 1):
         d = date(year, month, day_num)
-        gal_cells, added_cells, sold_cells = [], [], []
+        boundary_utc = _rollover_at(d).astimezone(timezone.utc)
+        gal_cells, added_cells, sold_cells, profit_cells = [], [], [], []
         day_total_sold = 0.0
         any_sold = False
+        day_total_profit = 0.0
+        any_profit = False
 
         for t in tanks:
             close = closings[t.id].get(d)
@@ -248,19 +279,31 @@ def export_monthly_summary(
             gal_cells.append(round(close) if close is not None else "")
             added_cells.append(round(add) if add else "")
 
+            sold_val = None
             if close is not None and opening is not None:
-                sold = opening + add - close
-                sold_cells.append(round(sold))
-                day_total_sold += sold
+                sold_val = opening + add - close
+                sold_cells.append(round(sold_val))
+                day_total_sold += sold_val
                 any_sold = True
             else:
                 sold_cells.append("")
+
+            margin = _margin_on(t.id, boundary_utc)
+            if sold_val is not None and margin is not None:
+                profit = sold_val * margin
+                profit_cells.append(round(profit, 2))
+                day_total_profit += profit
+                any_profit = True
+            else:
+                profit_cells.append("")
 
             if close is not None:
                 opening_carry[t.id] = close  # roll forward for the next day
 
         row = [day_num] + gal_cells + added_cells + sold_cells
         row.append(round(day_total_sold) if any_sold else "")
+        row += profit_cells
+        row.append(round(day_total_profit, 2) if any_profit else "")
         rows.append(row)
 
     filename = f"monthly_summary_{year:04d}-{month:02d}.csv"

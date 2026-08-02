@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models — fields match what TLS-350 display format actually provides."""
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, Text, TIMESTAMP
+from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, Numeric, Text, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -77,3 +77,26 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[str | None] = mapped_column(Text)
+
+
+class FuelPrice(Base):
+    """
+    Point-in-time pricing for a tank's product — cost, taxes/fees, and retail
+    sale price, all per gallon. A new row is added whenever pricing changes;
+    the most recent row with effective_at <= a given time is "the price" at
+    that time, which is how historical margin/profit gets computed (e.g. in
+    the monthly ledger CSV). Numeric(12,6) to support sub-cent pricing.
+    """
+    __tablename__ = "fuel_prices"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tank_id: Mapped[int] = mapped_column(Integer, ForeignKey("tanks.id"))
+    effective_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    cost_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    tax_fees_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6), default=0)
+    sale_price_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    source: Mapped[str] = mapped_column(Text, default="manual")
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+    tank: Mapped["Tank"] = relationship("Tank")

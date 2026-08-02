@@ -53,6 +53,25 @@ export const api = {
 
   stats: (tankId) => request(`/tanks/${tankId}/stats`),
 
+  priceHistory: (tankId, { limit = 10 } = {}) => request(`/tanks/${tankId}/prices?limit=${limit}`),
+
+  currentPrice: (tankId) => request(`/tanks/${tankId}/prices/current`).catch(e => {
+    if (String(e.message).includes('404')) return null
+    throw e
+  }),
+
+  addPrice: (tankId, body) => request(`/tanks/${tankId}/prices`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }),
+
+  updatePrice: (priceId, body) => request(`/prices/${priceId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }),
+
+  deletePrice: (priceId) => request(`/prices/${priceId}`, { method: 'DELETE' }),
+
   updateTank: (tankId, patch) => request(`/tanks/${tankId}`, {
     method: 'PUT',
     body: JSON.stringify(patch),

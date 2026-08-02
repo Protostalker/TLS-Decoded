@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
 from models import Reading, Tank
-from routers import deliveries, export, health, insights, readings, settings, tanks
+from routers import deliveries, export, health, insights, pricing, readings, settings, tanks
 from schemas import DashboardOut, PredictionOut, ReadingOut, TankOut
 from routers.readings import _calc_rate
 
@@ -58,6 +58,7 @@ app.include_router(settings.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(insights.router, prefix="/api")
 app.include_router(deliveries.router, prefix="/api")
+app.include_router(pricing.router, prefix="/api")
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────

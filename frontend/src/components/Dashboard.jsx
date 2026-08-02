@@ -8,6 +8,7 @@ import ReadingsTable from './ReadingsTable.jsx'
 import ConsumptionPanel from './ConsumptionPanel.jsx'
 import DeliveryPanel from './DeliveryPanel.jsx'
 import StatsPanel from './StatsPanel.jsx'
+import PricingPanel from './PricingPanel.jsx'
 import ExportPanel from './ExportPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import useIsMobile from '../hooks/useIsMobile.js'
@@ -175,10 +176,15 @@ export default function Dashboard() {
             {/* History chart for selected tank */}
             {selectedTank && <FuelChart tank={selectedTank} />}
 
-            {/* Fun stats */}
+            {/* Fun stats + pricing/margin, side by side */}
             {selectedTank && (
-              <div style={{ marginTop:16 }}>
+              <div style={{
+                display:'grid',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gap:16, marginTop:16,
+              }}>
                 <StatsPanel tank={selectedTank} />
+                <PricingPanel tank={selectedTank} />
               </div>
             )}
 
