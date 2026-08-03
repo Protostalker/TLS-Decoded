@@ -118,6 +118,22 @@ export default function Dashboard() {
           </div>
         )}
 
+        {data && data.last_poll_success === false && (
+          <div style={{
+            background:'#450a0a', border:'1px solid #ef4444',
+            borderRadius:10, padding:'14px 18px', color:'#fca5a5',
+            fontSize:12, marginBottom:20,
+          }}>
+            <strong>Last poll failed</strong> ({data.last_poll_at ? format(parseISO(data.last_poll_at), 'MMM d, HH:mm:ss') : 'unknown time'}):
+            <div style={{ fontFamily:'monospace', marginTop:6, wordBreak:'break-word', color:'#fecaca' }}>
+              {data.last_poll_error || 'No error message recorded.'}
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:'#94a3b8' }}>
+              Full history in Settings (⚙) → Poll log.
+            </div>
+          </div>
+        )}
+
         {data && (
           <>
             {isMobile ? (

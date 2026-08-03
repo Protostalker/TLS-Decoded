@@ -155,10 +155,17 @@ def dashboard(db: Session = Depends(get_db)):
             ))
 
     last_poll: Optional[datetime] = None
+    last_poll_success: Optional[bool] = None
+    last_poll_error: Optional[str] = None
     try:
-        last_poll = db.execute(
-            text("SELECT polled_at FROM poll_log ORDER BY polled_at DESC LIMIT 1")
-        ).scalar()
+        row = db.execute(
+            text(
+                "SELECT polled_at, success, error_message FROM poll_log "
+                "ORDER BY polled_at DESC LIMIT 1"
+            )
+        ).first()
+        if row:
+            last_poll, last_poll_success, last_poll_error = row
     except Exception:
         pass
 
@@ -167,4 +174,6 @@ def dashboard(db: Session = Depends(get_db)):
         tanks=tank_outs,
         predictions=predictions,
         last_poll_at=last_poll,
+        last_poll_success=last_poll_success,
+        last_poll_error=last_poll_error,
     )

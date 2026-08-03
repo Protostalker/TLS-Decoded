@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { api } from '../api/client.js'
+import PollLogPanel from './PollLogPanel.jsx'
 
 function nextSlotsPreview(intervalMinutes) {
   if (!intervalMinutes || intervalMinutes <= 0) return ''
@@ -243,11 +244,15 @@ export default function SettingsPanel({ open, onClose }) {
 
             <button
               disabled={saving}
-              style={{ ...btn(false), width: '100%', marginBottom: 26 }}
+              style={{ ...btn(false), width: '100%', marginBottom: 20 }}
               onClick={handlePollNow}
             >
               ⚡ Poll now
             </button>
+
+            <div style={{ marginBottom: 26 }}>
+              <PollLogPanel />
+            </div>
 
             <div style={{ borderTop: '1px solid #2d3348', margin: '4px 0 20px' }} />
 

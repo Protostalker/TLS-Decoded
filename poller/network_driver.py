@@ -111,6 +111,7 @@ class TLSNetworkDriver:
         Retries up to 3 times on socket errors, reconnecting between attempts.
         Returns the full response as a decoded string.
         """
+        last_exc: Optional[Exception] = None
         for attempt in range(3):
             try:
                 sock = self._ensure_connected()
@@ -147,21 +148,43 @@ class TLSNetworkDriver:
                 return raw
 
             except (OSError, ConnectionError) as exc:
+                last_exc = exc
                 logger.warning("Command %s attempt %d/3 failed: %s", code, attempt + 1, exc)
                 self._close()
                 if attempt < 2:
                     time.sleep(0.5 * (2 ** attempt))
 
-        raise IOError(f"All 3 attempts failed for command '{code}'")
+        raise IOError(
+            f"Could not reach the adapter at {self._host}:{self._port} after 3 attempts "
+            f"for command '{code}' — last error: {last_exc}"
+        )
 
     # ── Public poll interface ─────────────────────────────────────────────────
 
     def poll_inventory(self, polled_at: datetime) -> list[TankReading]:
         """Send \\x01200 and parse the display-format inventory table."""
         raw = self._send_command("200")
+
+        if not raw:
+            wait_s = max(self._timeout, 8.0)
+            raise IOError(
+                f"TCP connection to {self._host}:{self._port} is fine, but got 0 bytes "
+                f"back after sending command 200 (waited {wait_s:.0f}s). The network "
+                "link to the adapter is OK — this points at the serial side: wrong "
+                "null-modem vs. straight-through cable (TX/RX swapped), a missing "
+                "signal ground, or a baud/parity mismatch between the adapter and "
+                "the TLS-350."
+            )
+
         readings = _parse_inventory_display(raw, polled_at)
         if not readings:
-            logger.warning("Display-format parse returned no readings for command 200")
+            snippet = raw.strip().replace("\n", " | ")[:200]
+            raise IOError(
+                f"Got {len(raw)} bytes back from the gauge but couldn't find any "
+                f"tank rows in it — check the adapter's serial baud rate/parity "
+                f"settings, or the gauge may be reporting its own error. Raw "
+                f"response started with: {snippet!r}"
+            )
         return readings
 
 

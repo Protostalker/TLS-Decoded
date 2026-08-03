@@ -1,15 +1,31 @@
-"""Health check endpoint."""
+"""Health check + poll log (recent poll attempts, for hardware diagnostics)."""
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from schemas import HealthOut
+from models import PollLog
+from schemas import HealthOut, PollLogOut
 
 router = APIRouter()
+
+
+@router.get("/poll-log", response_model=list[PollLogOut])
+def poll_log(limit: int = Query(20, le=200), db: Session = Depends(get_db)):
+    """Recent poll attempts with success/failure and the actual error text —
+    e.g. distinguishing 'adapter unreachable' from 'connected fine but the
+    gauge sent nothing back' (a serial wiring issue) from 'got bytes but
+    couldn't parse them' (baud/parity mismatch)."""
+    rows = (
+        db.query(PollLog)
+        .order_by(PollLog.polled_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [PollLogOut.model_validate(r) for r in rows]
 
 
 @router.get("/health", response_model=HealthOut)

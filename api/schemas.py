@@ -172,8 +172,20 @@ class HealthOut(BaseModel):
     poller_last_seen: Optional[datetime]
 
 
+class PollLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    polled_at: datetime
+    success: Optional[bool]
+    error_message: Optional[str] = None
+    duration_ms: Optional[int] = None
+
+
 class DashboardOut(BaseModel):
     station_name: str
     tanks: list[TankOut]
     predictions: list[PredictionOut]
     last_poll_at: Optional[datetime]
+    last_poll_success: Optional[bool] = None
+    last_poll_error: Optional[str] = None

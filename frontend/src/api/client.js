@@ -15,6 +15,8 @@ async function request(path, opts = {}) {
 export const api = {
   health: () => request('/health'),
 
+  pollLog: ({ limit = 20 } = {}) => request(`/poll-log?limit=${limit}`),
+
   dashboard: () => request('/dashboard'),
 
   tanks: () => request('/tanks'),
