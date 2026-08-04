@@ -55,6 +55,8 @@ export const api = {
 
   stats: (tankId) => request(`/tanks/${tankId}/stats`),
 
+  statsSummary: () => request('/stats/summary'),
+
   priceHistory: (tankId, { limit = 10 } = {}) => request(`/tanks/${tankId}/prices?limit=${limit}`),
 
   currentPrice: (tankId) => request(`/tanks/${tankId}/prices/current`).catch(e => {

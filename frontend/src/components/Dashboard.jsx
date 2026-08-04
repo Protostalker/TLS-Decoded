@@ -9,6 +9,7 @@ import ConsumptionPanel from './ConsumptionPanel.jsx'
 import DeliveryPanel from './DeliveryPanel.jsx'
 import StatsPanel from './StatsPanel.jsx'
 import PricingPanel from './PricingPanel.jsx'
+import TotalStatsPanel from './TotalStatsPanel.jsx'
 import ExportPanel from './ExportPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import useIsMobile from '../hooks/useIsMobile.js'
@@ -218,6 +219,14 @@ export default function Dashboard() {
               }}>
                 <StatsPanel tank={selectedTank} />
                 <PricingPanel tank={selectedTank} />
+              </div>
+            )}
+
+            {/* All-tanks combined total viewer — modular, shows up as soon as
+                any tanks exist, independent of which one is selected above. */}
+            {data.tanks?.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <TotalStatsPanel visible />
               </div>
             )}
 

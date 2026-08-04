@@ -123,6 +123,28 @@ def _safe_margin_sum(breakdown: list[dict]) -> Optional[float]:
     return round(sum(vals), 2) if vals else None
 
 
+def _consumed_since(tank_id: int, since: datetime, db: Session) -> Optional[float]:
+    """Sum all poll-to-poll volume drops since `since`, skipping delivery jumps."""
+    rows = (
+        db.query(Reading)
+        .filter(
+            Reading.tank_id == tank_id,
+            Reading.polled_at >= since,
+            Reading.volume_gallons.isnot(None),
+        )
+        .order_by(Reading.polled_at.asc())
+        .all()
+    )
+    if len(rows) < 2:
+        return None
+    total = 0.0
+    for i in range(1, len(rows)):
+        delta = rows[i - 1].volume_gallons - rows[i].volume_gallons
+        if delta > 0:  # ignore increases (deliveries) — this is consumption only
+            total += delta
+    return round(total, 1)
+
+
 @router.get("/tanks/{tank_id}/consumption")
 def get_consumption(
     tank_id: int,
@@ -163,45 +185,25 @@ def get_consumption(
     return intervals[:limit]
 
 
-@router.get("/tanks/{tank_id}/stats")
-def get_stats(tank_id: int, db: Session = Depends(get_db)):
-    tank = db.query(Tank).filter(Tank.id == tank_id).first()
-    if not tank:
-        raise HTTPException(status_code=404, detail="Tank not found")
-
+def _compute_tank_stats(tank: Tank, db: Session) -> dict:
+    """
+    Build the full "fun stats" + margin/profit payload for a single tank.
+    Shared by the per-tank endpoint and the all-tanks summary endpoint, so
+    it's parameterized on the ORM Tank object rather than a bare tank_id.
+    """
+    tank_id = tank.id
     now = datetime.now(tz=timezone.utc)
-
-    def _consumed_since(since: datetime) -> Optional[float]:
-        """Sum all poll-to-poll volume drops since `since`, skipping delivery jumps."""
-        rows = (
-            db.query(Reading)
-            .filter(
-                Reading.tank_id == tank_id,
-                Reading.polled_at >= since,
-                Reading.volume_gallons.isnot(None),
-            )
-            .order_by(Reading.polled_at.asc())
-            .all()
-        )
-        if len(rows) < 2:
-            return None
-        total = 0.0
-        for i in range(1, len(rows)):
-            delta = rows[i - 1].volume_gallons - rows[i].volume_gallons
-            if delta > 0:  # ignore increases (deliveries) — this is consumption only
-                total += delta
-        return round(total, 1)
 
     # "Today" = midnight in station's local timezone (Pacific), NOT UTC midnight.
     # At e.g. 17:15 PDT the UTC date has already rolled over, so using UTC
     # midnight would exclude hours 00:00–07:00 local time from the total.
     now_local = datetime.now(tz=STATION_TZ)
     today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_consumed = _consumed_since(today_start_local)
+    today_consumed = _consumed_since(tank_id, today_start_local, db)
 
     # "Last 7 days" is a rolling window — no calendar-day boundary involved,
     # so UTC is fine here.
-    week_consumed = _consumed_since(now - timedelta(days=7))
+    week_consumed = _consumed_since(tank_id, now - timedelta(days=7), db)
 
     # 30-day average daily consumption (reuses the same "ignore increases" logic).
     rate_rows = db.execute(
@@ -276,6 +278,15 @@ def get_stats(tank_id: int, db: Session = Depends(get_db)):
     breakdown_7d  = _build_daily_breakdown(tank_id, 7,  db)
     breakdown_30d = _build_daily_breakdown(tank_id, 30, db)
 
+    # Live profit: today's consumption so far, valued at the price in effect
+    # right now. None if no price has ever been entered for this tank.
+    current_margin_per_gallon = _effective_margin(tank_id, now, db)
+    today_profit_dollars = (
+        round(today_consumed * current_margin_per_gallon, 2)
+        if today_consumed is not None and current_margin_per_gallon is not None
+        else None
+    )
+
     return {
         "tank_id": tank_id,
         "today_consumed_gallons": today_consumed,
@@ -293,4 +304,80 @@ def get_stats(tank_id: int, db: Session = Depends(get_db)):
         "water_alert": bool(water is not None and water >= WATER_ALERT_INCHES),
         "turnover_days_estimate": turnover_days,
         "current_volume_gallons": current_volume,
+        "current_margin_per_gallon": current_margin_per_gallon,
+        "today_profit_dollars": today_profit_dollars,
+    }
+
+
+@router.get("/tanks/{tank_id}/stats")
+def get_stats(tank_id: int, db: Session = Depends(get_db)):
+    tank = db.query(Tank).filter(Tank.id == tank_id).first()
+    if not tank:
+        raise HTTPException(status_code=404, detail="Tank not found")
+    return _compute_tank_stats(tank, db)
+
+
+@router.get("/stats/summary")
+def get_stats_summary(db: Session = Depends(get_db)):
+    """
+    All-tanks combined stats/profit view. Modular by design — aggregates
+    over however many tanks are currently active rather than assuming a
+    fixed set (e.g. Unleaded/Super/Diesel), so adding or retiring a tank
+    just changes how many contributors show up here.
+    """
+    tanks = db.query(Tank).filter(Tank.active == True).order_by(Tank.id).all()  # noqa: E712
+
+    per_tank = [(tank, _compute_tank_stats(tank, db)) for tank in tanks]
+
+    def _sum(key: str) -> Optional[float]:
+        vals = [s[key] for _, s in per_tank if s[key] is not None]
+        return round(sum(vals), 2) if vals else None
+
+    # Combine the daily breakdowns element-wise across tanks. Every tank's
+    # breakdown covers the same num_days with the same day boundaries (both
+    # come from `today_local` in _build_daily_breakdown), so index i always
+    # refers to the same calendar date across all tanks.
+    def _combine_breakdowns(key: str) -> list[dict]:
+        if not per_tank:
+            return []
+        length = len(per_tank[0][1][key])
+        combined = []
+        for i in range(length):
+            date_str = per_tank[0][1][key][i]["date"]
+            gallons = 0.0
+            margin_vals = []
+            for _, s in per_tank:
+                entry = s[key][i]
+                gallons += entry["gallons"] or 0.0
+                if entry["margin_dollars"] is not None:
+                    margin_vals.append(entry["margin_dollars"])
+            combined.append({
+                "date": date_str,
+                "gallons": round(gallons, 1),
+                "margin_dollars": round(sum(margin_vals), 2) if margin_vals else None,
+            })
+        return combined
+
+    return {
+        "today_consumed_gallons": _sum("today_consumed_gallons"),
+        "today_profit_dollars": _sum("today_profit_dollars"),
+        "week_consumed_gallons": _sum("week_consumed_gallons"),
+        "total_margin_7d": _sum("total_margin_7d"),
+        "avg_daily_gallons_30d": _sum("avg_daily_gallons_30d"),
+        "total_margin_30d": _sum("total_margin_30d"),
+        "daily_breakdown_7d": _combine_breakdowns("daily_breakdown_7d"),
+        "daily_breakdown_30d": _combine_breakdowns("daily_breakdown_30d"),
+        "tanks": [
+            {
+                "tank_id": tank.id,
+                "name": tank.name,
+                "today_consumed_gallons": s["today_consumed_gallons"],
+                "today_profit_dollars": s["today_profit_dollars"],
+                "week_consumed_gallons": s["week_consumed_gallons"],
+                "total_margin_7d": s["total_margin_7d"],
+                "total_margin_30d": s["total_margin_30d"],
+                "current_margin_per_gallon": s["current_margin_per_gallon"],
+            }
+            for tank, s in per_tank
+        ],
     }
