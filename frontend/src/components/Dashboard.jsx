@@ -24,12 +24,21 @@ export default function Dashboard() {
   const timer                         = useRef(null)
   const isMobile                      = useIsMobile()
 
+  // NOTE: this must stay dependency-free (no selectedTankId here). It used to
+  // read selectedTankId to decide whether to default-select a tank, but since
+  // this callback is only ever created once (deps: []) and then reused by
+  // setInterval every POLL_MS, that read was a stale closure — it always saw
+  // the *initial* (null) value of selectedTankId, not the current one. That
+  // made the "default to first tank" branch fire on *every* poll tick
+  // forever, silently snapping the selection back to tank #1 (Unleaded) out
+  // from under whatever the user had picked — including mid-keystroke while
+  // filling out a form for a different tank. The default-selection logic now
+  // lives in its own effect below, which correctly re-reads current state.
   const load = useCallback(async () => {
     try {
       const d = await api.dashboard()
       setData(d)
       setError(null)
-      if (!selectedTankId && d.tanks?.length > 0) setSelected(d.tanks[0].id)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -42,6 +51,14 @@ export default function Dashboard() {
     timer.current = setInterval(load, POLL_MS)
     return () => clearInterval(timer.current)
   }, [load])
+
+  // Default to the first tank once data arrives — but only if nothing is
+  // selected yet, so this never overrides a user's existing selection.
+  useEffect(() => {
+    if (!selectedTankId && data?.tanks?.length > 0) {
+      setSelected(data.tanks[0].id)
+    }
+  }, [data, selectedTankId])
 
   const selectedTank       = data?.tanks?.find(t => t.id === selectedTankId) ?? null
   const selectedPrediction = data?.predictions?.find(p => p.tank_id === selectedTankId) ?? null
