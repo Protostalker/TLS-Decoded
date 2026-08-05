@@ -1,0 +1,86 @@
+const BASE = '/api'
+const TOKEN_KEY = 'tls_cloud_session_token'
+
+// The primary auth path is the httpOnly cookie the login endpoint sets
+// (works automatically for same-origin requests, which is how nginx serves
+// this in production/Docker — see cloud/README.md). The token is *also*
+// kept here and sent as a Bearer header so `npm run dev` still works when
+// the Vite dev server and cloud-api are on different origins/ports and the
+// browser won't send a cross-origin cookie.
+function getToken() { return localStorage.getItem(TOKEN_KEY) }
+function setToken(t) { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY) }
+
+async function request(path, opts = {}) {
+  const token = getToken()
+  const res = await fetch(`${BASE}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts.headers,
+    },
+    credentials: 'include',   // send/receive the httpOnly session cookie
+    ...opts,
+  })
+  if (!res.ok) {
+    let detail = ''
+    try { detail = (await res.json()).detail } catch { /* ignore */ }
+    const err = new Error(detail || `${res.status}`)
+    err.status = res.status
+    throw err
+  }
+  if (res.status === 204) return null
+  return res.json()
+}
+
+export const api = {
+  // ── Auth ──
+  login: async (email, password, duration) => {
+    const result = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, duration }) })
+    setToken(result.token)
+    return result
+  },
+  logout: async () => {
+    try { await request('/auth/logout', { method: 'POST' }) } finally { setToken(null) }
+  },
+  me: () => request('/auth/me'),
+  mySessions: () => request('/auth/sessions'),
+  revokeMySession: (id) => request(`/auth/sessions/${id}`, { method: 'DELETE' }),
+
+  // ── T2: stations + combined stats ──
+  myStations: () => request('/me/stations'),
+  combinedStats: () => request('/me/stats/summary'),
+
+  // ── T1: station-scoped ──
+  stationDashboard: (id) => request(`/stations/${id}/dashboard`),
+  stationTanks: (id) => request(`/stations/${id}/tanks`),
+  stationTankReadings: (id, tankLocalId, limit = 300) =>
+    request(`/stations/${id}/tanks/${tankLocalId}/readings?limit=${limit}`),
+  stationTankDeliveries: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/deliveries`),
+  stationTankPrices: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/prices`),
+  stationTankStats: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/stats`),
+  stationStatsSummary: (id) => request(`/stations/${id}/stats/summary`),
+
+  // ── T3: admin ──
+  admin: {
+    customers: () => request('/admin/customers'),
+    createCustomer: (body) => request('/admin/customers', { method: 'POST', body: JSON.stringify(body) }),
+
+    stations: () => request('/admin/stations'),
+    createStation: (body) => request('/admin/stations', { method: 'POST', body: JSON.stringify(body) }),
+    updateStation: (id, body) => request(`/admin/stations/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    rotateCredential: (id) => request(`/admin/stations/${id}/rotate-credential`, { method: 'POST' }),
+
+    users: () => request('/admin/users'),
+    createUser: (body) => request('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+    updateUser: (id, body) => request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+    createAssignment: (userId, stationId) =>
+      request('/admin/assignments', { method: 'POST', body: JSON.stringify({ user_id: userId, station_id: stationId }) }),
+    deleteAssignment: (userId, stationId) =>
+      request(`/admin/assignments?user_id=${userId}&station_id=${stationId}`, { method: 'DELETE' }),
+
+    userSessions: (userId) => request(`/admin/users/${userId}/sessions`),
+    revokeSession: (sessionId) => request(`/admin/sessions/${sessionId}`, { method: 'DELETE' }),
+    revokeAllUserSessions: (userId) => request(`/admin/users/${userId}/sessions`, { method: 'DELETE' }),
+  },
+}

@@ -43,9 +43,16 @@ sizes, and thresholds are all configurable.
 - **CSV exports** — per-tank raw readings, all-tanks combined, or a
   day-by-day **Monthly Ledger** shaped like a manual spreadsheet (GAL /
   ADDED / SOLD per tank, plus a total).
-- **Device ID** — a 32-char hex ID (view/generate/edit) reserved for a
-  future cloud-sync phase. Not active yet — this is a local-first proof of
-  concept.
+- **Device ID** — a 32-char hex ID (view/generate/edit), the original
+  placeholder for a future cloud-sync phase. Superseded by the real device
+  credential the cloud hub now issues (see **Cloud (multi-station)** below)
+  when cloud sync is enabled — this field is kept for backward compatibility
+  and still just a local display value otherwise.
+- **Cloud sync (optional)** — a station can push its data outbound on a
+  timer to a central cloud hub for remote/multi-station viewing, without any
+  inbound connection or stable IP at the station. Fully optional and
+  additive — see **Cloud (multi-station)** below. The station works exactly
+  as described above with this disabled, which is the default.
 
 ---
 
@@ -57,6 +64,13 @@ sizes, and thresholds are all configurable.
 | `api`      | FastAPI + SQLAlchemy               | 8000 |
 | `poller`   | Python, polls on a live schedule   | —    |
 | `frontend` | React + Vite + Recharts → nginx    | 5005 |
+| `sync`     | Python, pushes to the cloud hub on a timer (idle until configured) | — |
+| `cloud-db`, `cloud-api`, `cloud-frontend` | Optional cloud hub for multi-station remote viewing | 5433, 8100, 5100 |
+
+**All of the above live in one `docker-compose.yml`.** `docker compose up`
+brings up everything, cloud hub included, unless you comment sections out —
+see **Cloud (multi-station)** below if you just want a plain station
+install with no cloud portal.
 
 ## Hardware
 
@@ -84,6 +98,12 @@ cp config/tls-decoded.yaml.example config/tls-decoded.yaml
 
 docker compose up -d --build
 ```
+
+> **Just want the station, no cloud portal?** `docker-compose.yml` ships
+> with both the station services and the optional cloud hub active in one
+> file. Open it and comment out the whole "CLOUD HUB services" section
+> (prefix each line with `#`) before running `docker compose up` — the
+> station works standalone either way. See **Cloud (multi-station)** below.
 
 Dashboard: **http://localhost:5005**
 API docs (Swagger UI): **http://localhost:8000/docs**
@@ -170,6 +190,30 @@ All endpoints are under `/api`. Full interactive docs at `/docs`.
 
 ---
 
+## Cloud (multi-station)
+
+Optional layer on top of everything above: a customer with one or more
+stations can log into a central cloud portal and see their station(s) from
+anywhere, with no port-forwarding or stable IP required at any station.
+Each station pushes its data outbound to the cloud hub on a timer (default
+every 30 min); the hub holds a mirrored copy and serves the dashboard from
+that. If a station drops offline, the cloud keeps showing its last known
+good numbers instead of nothing.
+
+This is entirely additive — every station keeps running standalone exactly
+as described above regardless of the cloud hub. `docker-compose.yml`
+contains both halves as one file (comment out whichever section you don't
+need — see **Stack** above), and even with the cloud hub containers
+running, a given station's `sync` service stays idle until you configure
+it (from the local dashboard's Settings panel, or via env vars) — nothing
+gets pushed anywhere by default.
+
+Full setup, the auth model, and provisioning steps are in
+[`cloud/README.md`](cloud/README.md). Design rationale for how this is put
+together is in [`CLOUD-ARCHITECTURE.md`](CLOUD-ARCHITECTURE.md).
+
+---
+
 ## Project structure
 
 ```
@@ -192,13 +236,20 @@ tls-decoded/
 │       ├── deliveries.py          # confirm / manually log
 │       ├── settings.py            # poll interval, device ID
 │       └── export.py              # CSV exports
-└── frontend/
-    └── src/components/
-        ├── Dashboard.jsx
-        ├── TankGauge.jsx          # desktop cylinder / mobile square
-        ├── FuelChart.jsx, StatsPanel.jsx
-        ├── ReadingsTable.jsx, ConsumptionPanel.jsx, DeliveryPanel.jsx
-        ├── ExportPanel.jsx, SettingsPanel.jsx
+├── frontend/
+│   └── src/components/
+│       ├── Dashboard.jsx
+│       ├── TankGauge.jsx          # desktop cylinder / mobile square
+│       ├── FuelChart.jsx, StatsPanel.jsx
+│       ├── ReadingsTable.jsx, ConsumptionPanel.jsx, DeliveryPanel.jsx
+│       ├── ExportPanel.jsx, SettingsPanel.jsx
+├── sync/                          # optional 5th station container — pushes to the cloud hub
+│   ├── main.py                    # checkpointed batch pushes, retry w/ backoff
+│   └── config.py
+└── cloud/                         # optional cloud hub — see cloud/README.md
+    ├── docker-compose.cloud.yml
+    ├── cloud-api/                 # Ingest API + T1/T2/T3 app API
+    └── cloud-frontend/            # login (T2), station dashboard (T1), admin (T3)
 ```
 
 ---
@@ -215,6 +266,7 @@ port). `docker-compose.yml`'s `frontend.build.target` should be
 docker logs tls-decoded-frontend-1
 docker logs tls-decoded-api-1
 docker logs tls-decoded-poller-1
+docker logs tls-decoded-sync-1     # if cloud sync is enabled — see cloud/README.md
 ```
 
 **Poller can't reach the gauge** — confirm the adapter's IP in
@@ -235,4 +287,6 @@ regardless of start order.
 
 - Reorder-threshold alerts (browser/desktop notifications)
 - Side-by-side tank comparison view
-- Remote/cloud sync (device ID and settings are already in place for this)
+- Remote config from the cloud side (poll interval, tank capacity, etc. pushed
+  down to a station) — v1 cloud sync is one-way, station → cloud only; see
+  `cloud/README.md` and `CLOUD-ARCHITECTURE.md`'s open questions

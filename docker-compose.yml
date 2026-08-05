@@ -1,4 +1,35 @@
+# TLS-Decoded — single-file compose covering both halves of the system:
+#   1. STATION services (db, api, poller, frontend, sync)
+#   2. CLOUD HUB services (cloud-db, cloud-api, cloud-frontend)
+#
+# One command brings up whatever isn't commented out:
+#   docker compose up -d --build
+#
+# This file is meant to be edited per install. Comment out (prefix every
+# line with #) whichever whole section you don't need for this box:
+#
+#   - Local-only station (no cloud) → comment out the entire
+#     "CLOUD HUB services" section below. `sync` can stay in either way —
+#     it's idle and harmless until configured (see cloud/README.md).
+#   - Cloud-only host (the actual cloud hub, no station hardware here) →
+#     comment out the entire "STATION services" section below.
+#   - Prototype / one box doing both (the common case right now) → leave
+#     everything uncommented, as shipped.
+#
+# Config: copy .env.example to .env and fill in the values relevant to
+# whichever section(s) you're using — station vars for STATION services,
+# CLOUD_* vars for CLOUD HUB services. Unused vars in .env are harmless.
+#
+# Note: if you later move the cloud hub to its own dedicated box (see
+# CLOUD-ARCHITECTURE.md), cloud/docker-compose.cloud.yml is the same CLOUD
+# HUB section as a fully standalone file — copy the cloud/ folder over and
+# run that instead of maintaining two boxes off one edited copy of this file.
+
 services:
+  # ════════════════════════════════════════════════════════════════════════
+  # STATION services — comment out this whole section for a cloud-only host
+  # ════════════════════════════════════════════════════════════════════════
+
   db:
     image: postgres:16-alpine
     environment:
@@ -8,7 +39,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tls -d tls_decoded"]
       interval: 10s
@@ -26,7 +57,7 @@ services:
     volumes:
       - ./config:/app/config:ro
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
@@ -56,10 +87,89 @@ services:
       context: ./frontend
       target: production
     ports:
-      - "5005:80"
+      - "${FRONTEND_PORT:-5005}:80"
     depends_on:
       - api
     restart: unless-stopped
 
+  # Pushes this station's data to the cloud hub on a timer (default 30 min —
+  # see CLOUD-ARCHITECTURE.md / cloud/README.md). Own container so a hung outbound push
+  # can't affect on-site polling, same reasoning as api/poller being separate.
+  # Only ever dials out; the station works fully standalone with this
+  # container stopped or removed. Idle (and harmless) until it's configured
+  # either way: the three STATION_*/CLOUD_INGEST_URL vars below (set once,
+  # before first `up`), OR directly from the local dashboard's Settings ->
+  # Cloud sync panel at any time after — both write to the same live-editable
+  # settings table, so the dashboard path needs no restart. See cloud/README.md.
+  # Safe to leave in even on a station that will never use cloud sync — it
+  # just sits idle. Comment it out too if you'd rather not build it at all.
+  sync:
+    build: ./sync
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://tls:${DB_PASSWORD:-tls_local}@db:5432/tls_decoded
+      CLOUD_INGEST_URL: ${CLOUD_INGEST_URL:-}
+      STATION_DEVICE_ID: ${STATION_DEVICE_ID:-}
+      STATION_DEVICE_SECRET: ${STATION_DEVICE_SECRET:-}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-30}
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════════════════════════════════
+  # CLOUD HUB services — comment out this whole section for a local-only
+  # station install with no cloud portal. See cloud/README.md for the full
+  # picture (auth model, provisioning a station, staleness indicators, etc).
+  # ════════════════════════════════════════════════════════════════════════
+
+  cloud-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tls_decoded_cloud
+      POSTGRES_USER: tls_cloud
+      POSTGRES_PASSWORD: ${CLOUD_DB_PASSWORD:-tls_cloud_local}
+    volumes:
+      - cloud_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${CLOUD_DB_PORT:-5433}:5432"   # distinct host port from the station db's 5432, so both can run on one box
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tls_cloud -d tls_decoded_cloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cloud-api:
+    build: ./cloud/cloud-api
+    depends_on:
+      cloud-db:
+        condition: service_healthy
+    environment:
+      CLOUD_DATABASE_URL: postgresql://tls_cloud:${CLOUD_DB_PASSWORD:-tls_cloud_local}@cloud-db:5432/tls_decoded_cloud
+      # First-run convenience: if set and no admin exists yet, an initial T3
+      # admin account is created automatically. Safe to leave set afterward
+      # (no-op once an admin exists) — but rotate/remove once you've logged
+      # in and created a real admin, since it lives in plain text in .env.
+      ADMIN_EMAIL: ${CLOUD_ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${CLOUD_ADMIN_PASSWORD:-}
+    ports:
+      - "${CLOUD_API_PORT:-8100}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  cloud-frontend:
+    build:
+      context: ./cloud/cloud-frontend
+      target: production
+    ports:
+      - "${CLOUD_FRONTEND_PORT:-5100}:80"
+    depends_on:
+      - cloud-api
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  cloud_pgdata:

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { formatDistanceToNow, parseISO } from 'date-fns'
 import { api } from '../api/client.js'
 import PollLogPanel from './PollLogPanel.jsx'
 
@@ -90,6 +91,14 @@ export default function SettingsPanel({ open, onClose }) {
   const [saving, setSaving] = useState(false)
   const [tanks, setTanks] = useState(null)
 
+  // Cloud sync (cloud/) — distinct from the legacy device_id field above.
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(false)
+  const [cloudSyncUrl, setCloudSyncUrl] = useState('')
+  const [cloudSyncDeviceId, setCloudSyncDeviceId] = useState('')
+  const [cloudSyncDeviceSecret, setCloudSyncDeviceSecret] = useState('')
+  const [cloudSyncInterval, setCloudSyncInterval] = useState(30)
+  const [showSecret, setShowSecret] = useState(false)
+
   const load = useCallback(async () => {
     try {
       const [s, t] = await Promise.all([api.settings(), api.tanks()])
@@ -98,6 +107,11 @@ export default function SettingsPanel({ open, onClose }) {
       setAligned(s.poll_aligned)
       setDeviceIdInput(s.device_id)
       setTanks(t)
+      setCloudSyncEnabled(s.cloud_sync_enabled)
+      setCloudSyncUrl(s.cloud_sync_url)
+      setCloudSyncDeviceId(s.cloud_sync_device_id)
+      setCloudSyncDeviceSecret(s.cloud_sync_device_secret)
+      setCloudSyncInterval(s.cloud_sync_interval_minutes)
     } catch (e) {
       setStatus({ type: 'error', msg: e.message })
     }
@@ -150,6 +164,14 @@ export default function SettingsPanel({ open, onClose }) {
     navigator.clipboard?.writeText(deviceIdInput)
     setStatus({ type: 'ok', msg: 'Device ID copied to clipboard.' })
   }
+
+  const saveCloudSync = () => save({
+    cloud_sync_enabled: cloudSyncEnabled,
+    cloud_sync_url: cloudSyncUrl,
+    cloud_sync_device_id: cloudSyncDeviceId,
+    cloud_sync_device_secret: cloudSyncDeviceSecret,
+    cloud_sync_interval_minutes: cloudSyncInterval,
+  }, 'Cloud sync settings saved — the sync service picks this up within ~15s, no restart needed.')
 
   return (
     <div style={{
@@ -258,9 +280,10 @@ export default function SettingsPanel({ open, onClose }) {
 
             {/* Device ID / cloud */}
             <div style={row}>
-              <label style={label}>Device ID (hex)</label>
+              <label style={label}>Device ID (hex, legacy)</label>
               <div style={hint}>
-                Identifies this station for a future cloud deployment. Not active yet — proof of concept phase.
+                Original placeholder display value, not used by anything active. Superseded by the
+                real device credential in the Cloud sync section below.
               </div>
               <input
                 value={deviceIdInput}
@@ -281,11 +304,90 @@ export default function SettingsPanel({ open, onClose }) {
             </div>
 
             <div style={row}>
-              <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 8, opacity: 0.5 }}>
-                <input type="checkbox" checked={settings.remote_enabled} disabled />
-                Remote / cloud sync
+              <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={cloudSyncEnabled}
+                  onChange={e => setCloudSyncEnabled(e.target.checked)}
+                />
+                Cloud sync
               </label>
-              <div style={hint}>Coming soon — local proof of concept first.</div>
+              <div style={hint}>
+                Pushes this station's data to a cloud hub for remote/multi-station viewing.
+                Fully optional — this station keeps working exactly as-is with it off. Get the
+                URL and device credential from an admin (Admin → Stations → Provision in the
+                cloud portal).
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Cloud URL</div>
+                <input
+                  value={cloudSyncUrl}
+                  onChange={e => setCloudSyncUrl(e.target.value)}
+                  placeholder="https://your-cloud-host:8100"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Device ID</div>
+                <input
+                  value={cloudSyncDeviceId}
+                  onChange={e => setCloudSyncDeviceId(e.target.value)}
+                  placeholder="stn_…"
+                  style={{ ...inputStyle, fontFamily: 'monospace' }}
+                />
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Device secret</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type={showSecret ? 'text' : 'password'}
+                    value={cloudSyncDeviceSecret}
+                    onChange={e => setCloudSyncDeviceSecret(e.target.value)}
+                    style={{ ...inputStyle, fontFamily: 'monospace', flex: 1 }}
+                  />
+                  <button style={btn(false)} onClick={() => setShowSecret(s => !s)}>
+                    {showSecret ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Sync interval (minutes)</div>
+                <input
+                  type="number" min={1} max={1440}
+                  value={cloudSyncInterval}
+                  onChange={e => setCloudSyncInterval(Number(e.target.value))}
+                  style={inputStyle}
+                />
+                <div style={hint}>Default 30 — how often data is pushed. Doesn't need to match the poll interval.</div>
+              </div>
+
+              <button
+                disabled={saving}
+                style={{ ...btn(true), width: '100%', marginTop: 10 }}
+                onClick={saveCloudSync}
+              >
+                Save cloud sync settings
+              </button>
+
+              <div style={{
+                marginTop: 10, fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
+                  background: settings.cloud_sync_last_synced_at ? '#22c55e' : '#475569',
+                }} />
+                {settings.cloud_sync_last_synced_at
+                  ? <span style={{ color: '#94a3b8' }}>
+                      Last synced to cloud {formatDistanceToNow(parseISO(settings.cloud_sync_last_synced_at), { addSuffix: true })}
+                    </span>
+                  : <span style={{ color: '#64748b' }}>
+                      {cloudSyncEnabled ? 'Not synced yet — first push happens within ~15s of saving.' : 'Never synced.'}
+                    </span>}
+              </div>
             </div>
 
             {status && (

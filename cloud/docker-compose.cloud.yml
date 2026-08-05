@@ -1,0 +1,68 @@
+# TLS-Decoded Cloud Hub — Ingest API + T1/T2/T3 app API + cloud frontend.
+#
+# This is the entire deliverable that moves when HTS takes over hosting
+# (see CLOUD-ARCHITECTURE.md's "Repo / deployment layout" section) — no
+# code changes, just a different box and a real domain instead of the
+# temporary DDNS one.
+#
+# Run standalone on whatever box is hosting the cloud hub:
+#   cd cloud && docker compose -f docker-compose.cloud.yml up -d
+#
+# During the prototype phase, when the same box is both a station AND the
+# temporary cloud hub, run both compose files together from the repo root:
+#   docker compose -f docker-compose.yml -f cloud/docker-compose.cloud.yml up -d
+#
+# Config: copy cloud/.env.cloud.example to cloud/.env.cloud and fill it in
+# (cloud-db password, admin bootstrap email/password). See cloud/README.md.
+
+services:
+  cloud-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tls_decoded_cloud
+      POSTGRES_USER: tls_cloud
+      POSTGRES_PASSWORD: ${CLOUD_DB_PASSWORD:-tls_cloud_local}
+    volumes:
+      - cloud_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${CLOUD_DB_PORT:-5433}:5432"   # distinct host port from the station db's 5432, so both can run on one box
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tls_cloud -d tls_decoded_cloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cloud-api:
+    build: ./cloud-api
+    depends_on:
+      cloud-db:
+        condition: service_healthy
+    environment:
+      CLOUD_DATABASE_URL: postgresql://tls_cloud:${CLOUD_DB_PASSWORD:-tls_cloud_local}@cloud-db:5432/tls_decoded_cloud
+      # First-run convenience: if set and no admin exists yet, an initial T3
+      # admin account is created automatically. Safe to leave set afterward
+      # (no-op once an admin exists) — but rotate/remove once you've logged
+      # in and created a real admin, since it lives in plain text in .env.cloud.
+      ADMIN_EMAIL: ${CLOUD_ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${CLOUD_ADMIN_PASSWORD:-}
+    ports:
+      - "${CLOUD_API_PORT:-8100}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  cloud-frontend:
+    build:
+      context: ./cloud-frontend
+      target: production
+    ports:
+      - "${CLOUD_FRONTEND_PORT:-5100}:80"
+    depends_on:
+      - cloud-api
+    restart: unless-stopped
+
+volumes:
+  cloud_pgdata:

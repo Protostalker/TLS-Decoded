@@ -152,6 +152,15 @@ class SettingsOut(BaseModel):
     remote_enabled: bool
     remote_server_url: str
     poll_now_pending: bool
+    # Cloud sync (cloud/) — distinct from the legacy remote_* fields above,
+    # which belong to the older, still-inactive RemoteUploader stub. These
+    # back the real cloud hub built in cloud/ — see CLOUD-ARCHITECTURE.md.
+    cloud_sync_enabled: bool
+    cloud_sync_url: str
+    cloud_sync_device_id: str
+    cloud_sync_device_secret: str
+    cloud_sync_interval_minutes: int
+    cloud_sync_last_synced_at: Optional[datetime] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -160,6 +169,11 @@ class SettingsUpdate(BaseModel):
     remote_enabled: Optional[bool] = None
     remote_server_url: Optional[str] = None
     device_id: Optional[str] = None
+    cloud_sync_enabled: Optional[bool] = None
+    cloud_sync_url: Optional[str] = None
+    cloud_sync_device_id: Optional[str] = None
+    cloud_sync_device_secret: Optional[str] = None
+    cloud_sync_interval_minutes: Optional[int] = None
 
 
 class DeviceIdOut(BaseModel):

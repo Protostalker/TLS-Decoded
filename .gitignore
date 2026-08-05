@@ -13,9 +13,15 @@ venv/
 node_modules/
 frontend/dist/
 frontend/node_modules/
+cloud/cloud-frontend/dist/
+cloud/cloud-frontend/node_modules/
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 *.pid
+
+# ── Cloud (local dev/test byproducts) ─────────────────────────────────────────
+cloud/cloud-api/*.db
+cloud/cloud-frontend/vite.config.js.timestamp-*.mjs
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 probe_output.txt
