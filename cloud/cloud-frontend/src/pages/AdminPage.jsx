@@ -53,7 +53,7 @@ function CustomersTab() {
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
 
-  const load = () => api.admin.customers().then(setCustomers).catch(e => setError(e.message))
+  const load = () => { api.admin.customers().then(setCustomers).catch(e => setError(e.message)) }
   useEffect(load, [])
 
   const create = async (e) => {
@@ -323,7 +323,7 @@ function UserDetail({ user, stations, onChange }) {
   const [sessions, setSessions] = useState(null)
   const [pickStation, setPickStation] = useState('')
 
-  const loadSessions = () => api.admin.userSessions(user.id).then(setSessions).catch(() => {})
+  const loadSessions = () => { api.admin.userSessions(user.id).then(setSessions).catch(() => {}) }
   useEffect(loadSessions, [user.id])
 
   const assign = async () => {
