@@ -122,18 +122,21 @@ class StationOut(BaseModel):
     sync_interval_minutes: int
     last_sync_at: Optional[datetime] = None
     active: bool
+    zip_code: Optional[str] = None
 
 
 class StationCreate(BaseModel):
     customer_id: int
     name: str
     sync_interval_minutes: int = 30
+    zip_code: Optional[str] = None
 
 
 class StationUpdate(BaseModel):
     name: Optional[str] = None
     sync_interval_minutes: Optional[int] = None
     active: Optional[bool] = None
+    zip_code: Optional[str] = None
 
 
 class StationCredentialOut(BaseModel):

@@ -195,6 +195,17 @@ station's internet or power drops, the cloud keeps serving the last
 successfully synced numbers instead of nothing; the staleness badge is what
 makes it obvious you're looking at "last known good," not live data.
 
+## Weather (optional, per station)
+
+Set a zip code on a station (**Admin → Stations → Zip**) to get a weather
+panel on that station's T1 dashboard, plus a condensed chip and any active
+forecast-driven heads-up (rain, freeze, heat, high wind, snow — e.g. "check
+tank vent cap covers" ahead of rain) rolled up on the T2 hub. Uses two free,
+keyless upstreams (Zippopotam.us for geocoding, api.weather.gov for the
+forecast — both US-only), cached in-process for 30 minutes per zip. No zip
+set, or an upstream hiccup, just means the panel doesn't render — nothing
+else depends on it.
+
 ## Local dev (without Docker)
 
 ```bash

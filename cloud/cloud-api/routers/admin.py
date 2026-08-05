@@ -6,6 +6,7 @@ Admins: create customers, provision stations (issuing the device credential
 shown exactly once), create/manage users, assign users to stations, rotate
 station credentials, and view/revoke any user's sessions.
 """
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -55,6 +56,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
     return StationOut(
         id=s.id, name=s.name, customer_id=s.customer_id, customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
+        zip_code=s.zip_code,
     )
 
 
@@ -77,6 +79,7 @@ def create_station(body: StationCreate, db: Session = Depends(get_db)):
         customer_id=body.customer_id, name=body.name, device_id=device_id,
         device_secret_hash=hash_secret(device_secret),
         sync_interval_minutes=body.sync_interval_minutes,
+        zip_code=(body.zip_code.strip() if body.zip_code else None),
         active=True, created_at=datetime.now(tz=timezone.utc),
     )
     db.add(s)
@@ -98,6 +101,11 @@ def update_station(station_id: int, body: StationUpdate, db: Session = Depends(g
         s.sync_interval_minutes = body.sync_interval_minutes
     if body.active is not None:
         s.active = body.active
+    if body.zip_code is not None:
+        candidate = body.zip_code.strip()
+        if candidate and not re.fullmatch(r"\d{5}(-\d{4})?", candidate):
+            raise HTTPException(status_code=400, detail="zip_code must be a 5-digit (or ZIP+4) US zip code")
+        s.zip_code = candidate or None
     db.commit()
     db.refresh(s)
     return _station_out(db, s)

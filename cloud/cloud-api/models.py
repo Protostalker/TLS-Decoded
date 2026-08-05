@@ -57,6 +57,11 @@ class Station(Base):
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     last_sync_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
+    # US zip code — optional, set by an admin from T3. Powers the weather
+    # panel/recommendations on T1/T2 (see weather.py); nothing else depends
+    # on it, so it's safe to leave blank.
+    zip_code: Mapped[str | None] = mapped_column(Text)
+
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
 

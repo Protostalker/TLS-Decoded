@@ -79,6 +79,8 @@ export default function StationDashboardPage() {
               </span>
             </div>
 
+            <WeatherPanel stationId={id} />
+
             <div style={{
               display: 'flex', justifyContent: 'center', overflowX: 'auto',
               paddingBottom: 4, marginBottom: 24,
@@ -111,6 +113,72 @@ export default function StationDashboardPage() {
       </main>
     </div>
   )
+}
+
+// Best-effort — only renders once a zip is set on the station (T3 → Stations)
+// and the upstream weather lookup succeeds. Silent no-op otherwise, never
+// blocks the rest of the dashboard.
+function WeatherPanel({ stationId }) {
+  const [weather, setWeather] = useState(null)
+
+  useEffect(() => {
+    setWeather(null)
+    api.stationWeather(stationId).then(setWeather).catch(() => {})
+  }, [stationId])
+
+  if (!weather || !weather.configured) return null
+  if (!weather.available) {
+    return (
+      <div style={{ ...panelBox, marginBottom: 16, color: '#64748b', fontSize: 12 }}>
+        Weather unavailable for this station's zip code right now.
+      </div>
+    )
+  }
+
+  const { location, current, forecast, recommendations } = weather
+
+  return (
+    <div style={{ ...panelBox, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Weather — {location}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>
+            {current.temperature}°{current.temperature_unit} <span style={{ fontSize: 13, fontWeight: 500, color: '#94a3b8' }}>{current.short_forecast}</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+            {current.period} · Wind {current.wind_speed} {current.wind_direction}
+            {current.precipitation_chance != null && ` · ${current.precipitation_chance}% precip`}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', maxWidth: 420 }}>
+          {forecast.slice(0, 4).map((p, i) => (
+            <div key={i} style={{ textAlign: 'center', fontSize: 11 }}>
+              <div style={{ color: '#64748b' }}>{p.period}</div>
+              <div style={{ fontWeight: 700 }}>{p.temperature}°{p.temperature_unit}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {recommendations?.length > 0 && (
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {recommendations.map((r, i) => (
+            <div key={i} style={{
+              fontSize: 12, color: '#fca5a5', background: '#2a1010', border: '1px solid #7f1d1d',
+              borderRadius: 8, padding: '8px 10px',
+            }}>
+              <strong>{r.period}:</strong> {r.message}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const panelBox = {
+  background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 16,
 }
 
 function PredictionCard({ prediction }) {

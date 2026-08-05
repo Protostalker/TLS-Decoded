@@ -49,6 +49,7 @@ export const api = {
   // ── T2: stations + combined stats ──
   myStations: () => request('/me/stations'),
   combinedStats: () => request('/me/stats/summary'),
+  weatherSummary: () => request('/me/weather-summary'),
 
   // ── T1: station-scoped ──
   stationDashboard: (id) => request(`/stations/${id}/dashboard`),
@@ -59,6 +60,7 @@ export const api = {
   stationTankPrices: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/prices`),
   stationTankStats: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/stats`),
   stationStatsSummary: (id) => request(`/stations/${id}/stats/summary`),
+  stationWeather: (id) => request(`/stations/${id}/weather`),
 
   // ── T3: admin ──
   admin: {

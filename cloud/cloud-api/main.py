@@ -33,7 +33,16 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     Base.metadata.create_all(bind=engine)
+    _migrate_schema()
     _bootstrap_admin()
+
+
+def _migrate_schema() -> None:
+    """create_all only creates missing tables, not missing columns on tables
+    that already exist — idempotent ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+    here, same pattern the station stack's api/poller/sync containers use."""
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS zip_code TEXT"))
 
 
 def _bootstrap_admin() -> None:

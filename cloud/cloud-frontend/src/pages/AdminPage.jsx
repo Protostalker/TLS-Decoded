@@ -102,7 +102,7 @@ function CustomersTab() {
 function StationsTab() {
   const [stations, setStations] = useState(null)
   const [customers, setCustomers] = useState(null)
-  const [form, setForm] = useState({ customer_id: '', name: '', sync_interval_minutes: 30 })
+  const [form, setForm] = useState({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '' })
   const [error, setError] = useState(null)
   const [newCredential, setNewCredential] = useState(null)
 
@@ -119,9 +119,18 @@ function StationsTab() {
       const cred = await api.admin.createStation({
         customer_id: Number(form.customer_id), name: form.name,
         sync_interval_minutes: Number(form.sync_interval_minutes) || 30,
+        zip_code: form.zip_code || null,
       })
       setNewCredential(cred)
-      setForm({ customer_id: '', name: '', sync_interval_minutes: 30 })
+      setForm({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '' })
+      load()
+    } catch (e) { setError(e.message) }
+  }
+
+  const saveZip = async (station, zip) => {
+    setError(null)
+    try {
+      await api.admin.updateStation(station.id, { zip_code: zip })
       load()
     } catch (e) { setError(e.message) }
   }
@@ -155,6 +164,10 @@ function StationsTab() {
           <input type="number" min="1" value={form.sync_interval_minutes}
                  onChange={e => setForm({ ...form, sync_interval_minutes: e.target.value })} style={{ ...inputStyle, width: 90 }} />
         </Field>
+        <Field label="Zip (optional — for weather)">
+          <input value={form.zip_code} onChange={e => setForm({ ...form, zip_code: e.target.value })}
+                 style={{ ...inputStyle, width: 100 }} placeholder="90248" />
+        </Field>
         <button type="submit" style={btn}>Provision station</button>
       </form>
 
@@ -183,7 +196,7 @@ function StationsTab() {
           <thead>
             <tr>
               <th style={th}>Name</th><th style={th}>Customer</th><th style={th}>Sync interval</th>
-              <th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
+              <th style={th}>Zip</th><th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -192,6 +205,7 @@ function StationsTab() {
                 <td style={td}>{s.name}</td>
                 <td style={td}>{s.customer_name}</td>
                 <td style={td}>{s.sync_interval_minutes} min</td>
+                <td style={td}><ZipEditor station={s} onSave={saveZip} /></td>
                 <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
                 <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>inactive</span>}</td>
                 <td style={{ ...td, display: 'flex', gap: 6 }}>
@@ -204,6 +218,33 @@ function StationsTab() {
         </table>
         {stations?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No stations provisioned yet.</div>}
       </div>
+    </div>
+  )
+}
+
+function ZipEditor({ station, onSave }) {
+  const [value, setValue] = useState(station.zip_code || '')
+  const [saving, setSaving] = useState(false)
+  const dirty = value !== (station.zip_code || '')
+
+  const save = async () => {
+    setSaving(true)
+    try { await onSave(station, value) } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <input
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        placeholder="90248"
+        style={{ ...inputStyle, width: 70, padding: '4px 6px', fontSize: 11 }}
+      />
+      {dirty && (
+        <button onClick={save} disabled={saving} style={{ ...btnGhost, padding: '3px 8px', fontSize: 10 }}>
+          Save
+        </button>
+      )}
     </div>
   )
 }

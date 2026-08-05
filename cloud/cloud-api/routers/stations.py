@@ -20,6 +20,7 @@ from auth import assigned_station_ids, get_current_user, require_station_access
 from database import get_db
 from models import CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, Station, User
 from schemas import PredictionOut, ReadingOut, StationDashboardOut, StationOut, TankOut
+from weather import get_station_weather
 
 router = APIRouter()
 
@@ -31,6 +32,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
         id=s.id, name=s.name, customer_id=s.customer_id,
         customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
+        zip_code=s.zip_code,
     )
 
 
@@ -154,6 +156,8 @@ def _compute_tank_stats(db: Session, station_id: int, tank: CloudTank) -> dict:
     return {
         "tank_local_id": tank.local_id,
         "tank_name": tank.name,
+        "product": tank.product,
+        "capacity_gallons": tank.capacity_gallons,
         "today_consumed_gallons": today_consumed,
         "today_profit_dollars": today_profit,
         "week_consumed_gallons": week_consumed,
@@ -189,6 +193,10 @@ def combined_stats(user: User = Depends(get_current_user), db: Session = Depends
         tank_stats = [_compute_tank_stats(db, s.id, t) for t in tanks]
         per_station.append((s, tank_stats))
 
+    def _sum_across(tss_list: list[dict], key: str) -> Optional[float]:
+        vals = [ts[key] for ts in tss_list if ts[key] is not None]
+        return round(sum(vals), 2) if vals else None
+
     def _sum(key: str) -> Optional[float]:
         vals = [ts[key] for _, tss in per_station for ts in tss if ts[key] is not None]
         return round(sum(vals), 2) if vals else None
@@ -204,14 +212,61 @@ def combined_stats(user: User = Depends(get_current_user), db: Session = Depends
                 "station_id": s.id,
                 "station_name": s.name,
                 "last_sync_at": s.last_sync_at,
-                "today_consumed_gallons": round(sum(t["today_consumed_gallons"] or 0 for t in tss), 1) if tss else None,
-                "today_profit_dollars": round(sum(t["today_profit_dollars"] or 0 for t in tss), 2) if tss else None,
-                "week_consumed_gallons": round(sum(t["week_consumed_gallons"] or 0 for t in tss), 1) if tss else None,
+                "today_consumed_gallons": _sum_across(tss, "today_consumed_gallons"),
+                "today_profit_dollars": _sum_across(tss, "today_profit_dollars"),
+                "week_consumed_gallons": _sum_across(tss, "week_consumed_gallons"),
+                "total_margin_7d": _sum_across(tss, "total_margin_7d"),
+                "avg_daily_gallons_30d": _sum_across(tss, "avg_daily_gallons_30d"),
+                "tank_count": len(tss),
+                "water_alert": any(t["water_alert"] for t in tss),
+                "days_since_last_delivery": (
+                    min((t["days_since_last_delivery"] for t in tss if t["days_since_last_delivery"] is not None), default=None)
+                ),
                 "tanks": tss,
             }
             for s, tss in per_station
         ],
     }
+
+
+# ── Weather (T1 full panel, T2 condensed) ────────────────────────────────────
+#
+# Best-effort only — a station without a zip_code, or an upstream hiccup,
+# just means the weather panel/chip is omitted; never blocks the dashboard
+# or the ingest/sync pipeline. See weather.py for the upstreams + caching.
+
+@router.get("/stations/{station_id}/weather")
+def station_weather(station_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    station = require_station_access(station_id, db, user)
+    if not station.zip_code:
+        return {"configured": False}
+    w = get_station_weather(station.zip_code)
+    if w is None:
+        return {"configured": True, "available": False}
+    return {"configured": True, "available": True, **w}
+
+
+@router.get("/me/weather-summary")
+def weather_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Condensed per-station weather for the T2 hub — current conditions plus
+    the top recommendation (if any), not the full multi-day forecast. Reuses
+    weather.py's cache, so this stays fast after each station's first hit."""
+    ids = assigned_station_ids(db, user)
+    stations = db.query(Station).filter(Station.id.in_(ids)).all() if ids else []
+    out = {}
+    for s in stations:
+        if not s.zip_code:
+            continue
+        w = get_station_weather(s.zip_code)
+        if not w:
+            continue
+        out[s.id] = {
+            "location": w["location"],
+            "current": w["current"],
+            "recommendation_count": len(w["recommendations"]),
+            "top_recommendation": w["recommendations"][0]["message"] if w["recommendations"] else None,
+        }
+    return out
 
 
 # ── T1: single-station dashboard, served from the cloud mirror ──────────────
