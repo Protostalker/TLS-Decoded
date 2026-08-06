@@ -51,21 +51,27 @@ data out — lives at the repo root (`sync/`), alongside `api/`/`poller/`.
 **The root `docker-compose.yml` is the one file that matters day to day.**
 It already contains everything — station services (`db`/`api`/`poller`/
 `frontend`/`sync`) and cloud hub services (`cloud-db`/`cloud-api`/
-`cloud-frontend`) — as one file, one `.env`, one `docker compose up`. A
-technician installing at a station-only site, or standing up a cloud-only
-box, comments out whichever section of that file they don't need (each
-section is clearly marked). `cloud/docker-compose.cloud.yml` is a second,
-standalone copy of just the cloud section, kept for the day the cloud hub
-moves to its own dedicated box — see "Dedicated cloud box" below. Until
-then, ignore it and use the root file.
+`cloud-frontend`) — as one file, one `.env`, one `docker compose up`.
+Which services actually start is controlled by `COMPOSE_PROFILES` in
+`.env`, not by editing the YAML — see **Deployment modes** in the root
+`README.md`. `cloud/docker-compose.cloud.yml` is a second, standalone copy
+of just the cloud section, kept for the day the cloud hub moves to its own
+dedicated box — see "Dedicated cloud box" below. Until then, ignore it and
+use the root file.
 
 ## Running it
 
-**One box doing everything** (the common case right now — prototype phase,
-or any site that wants local + cloud together):
+Easiest path: `./install.sh` from the repo root — it asks what kind of box
+this is (local station / cloud server / poll-sync / complete-demo) and
+handles `.env`, profiles, and secrets for you. See the root `README.md`'s
+**Quick start** and **Deployment modes**.
+
+Doing it by hand instead — **one box doing everything** (station + cloud
+together, e.g. a prototype or demo):
 
 ```bash
 cp .env.example .env
+# COMPOSE_PROFILES=station-core,station-ui,cloud
 # fill in .env — station vars (DB_PASSWORD, SECRET_KEY, ...) and the
 # "Cloud hub" section (CLOUD_DB_PASSWORD, CLOUD_ADMIN_EMAIL/PASSWORD, ...)
 
@@ -77,10 +83,10 @@ docker compose up -d --build
 - Station's own local dashboard keeps working exactly as before at
   **http://localhost:5005**
 
-If this box is station-only (no cloud) or cloud-only (no station hardware),
-open the root `docker-compose.yml`, comment out the whole section you don't
-need (prefix every line with `#` — each section is marked with a banner
-comment), and run the same `docker compose up -d --build`.
+If this box is station-only (no cloud) set `COMPOSE_PROFILES=station-core,station-ui`;
+cloud-only (no station hardware) set `COMPOSE_PROFILES=cloud`; a poll-sync
+station with no local dashboard set `COMPOSE_PROFILES=station-core`. Same
+`docker compose up -d --build` either way — the profile is what changes.
 
 ### Dedicated cloud box (later)
 
@@ -96,9 +102,10 @@ docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d --build
 ```
 
 No code changes either way. Each customer's station keeps running the root
-`docker-compose.yml` (cloud section commented out) locally, pointed at the
-new hub's real domain via `CLOUD_INGEST_URL` instead of the temporary DDNS
-one (see "Provisioning a station" below).
+`docker-compose.yml` (`COMPOSE_PROFILES=station-core` or
+`station-core,station-ui`, no `cloud` profile) locally, pointed at the new
+hub's real domain via `CLOUD_INGEST_URL` instead of the temporary DDNS one
+(see "Provisioning a station" below).
 
 ## Provisioning a station
 
@@ -205,6 +212,25 @@ keyless upstreams (Zippopotam.us for geocoding, api.weather.gov for the
 forecast — both US-only), cached in-process for 30 minutes per zip. No zip
 set, or an upstream hiccup, just means the panel doesn't render — nothing
 else depends on it.
+
+Also set a station's **Timezone** (Admin → Stations, IANA name like
+`America/Los_Angeles`; defaults to Pacific if left blank) — this is what
+"today" means for that station's stats on T1/T2. Get this right or
+"today's" numbers won't match the station's own local dashboard.
+
+## Pricing (cloud → station)
+
+Each station's T1 dashboard has a **Pricing — all products** panel showing
+every tank's current cost/tax/sale price and live margin, mirrored from the
+station. Submitting an update there doesn't write to the station directly —
+v1 sync is one-way (station → cloud) — it queues a `PendingPriceUpdate`
+row instead. The station's own `sync` container polls for pending updates
+every ~15s tick (independent of its push interval), applies them to the
+local `fuel_prices` table exactly as if someone had typed them in at the
+station, and acks. The resulting row flows back up through the normal
+one-way push on the next cycle. The panel shows "queued" vs. "applied at
+{time}" so it's honest about the latency — usually seconds if the station
+is online, longer if it's offline until it reconnects.
 
 ## Local dev (without Docker)
 

@@ -123,6 +123,7 @@ class StationOut(BaseModel):
     last_sync_at: Optional[datetime] = None
     active: bool
     zip_code: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class StationCreate(BaseModel):
@@ -130,6 +131,7 @@ class StationCreate(BaseModel):
     name: str
     sync_interval_minutes: int = 30
     zip_code: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class StationUpdate(BaseModel):
@@ -137,6 +139,7 @@ class StationUpdate(BaseModel):
     sync_interval_minutes: Optional[int] = None
     active: Optional[bool] = None
     zip_code: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 class StationCredentialOut(BaseModel):
@@ -223,6 +226,29 @@ class PredictionOut(BaseModel):
     projected_reorder_date: Optional[str]
     confidence: str
     note: Optional[str] = None
+
+
+class PriceUpdateRequest(BaseModel):
+    cost_per_gallon: float
+    tax_rate_percent: Optional[float] = None
+    tax_fees_per_gallon: Optional[float] = None
+    sale_price_per_gallon: float
+    effective_at: Optional[datetime] = None
+    note: Optional[str] = None
+
+
+class PriceUpdateOut(BaseModel):
+    id: int
+    station_id: int
+    tank_local_id: int
+    cost_per_gallon: Optional[float] = None
+    tax_rate_percent: Optional[float] = None
+    tax_fees_per_gallon: Optional[float] = None
+    sale_price_per_gallon: Optional[float] = None
+    effective_at: datetime
+    note: Optional[str] = None
+    created_at: datetime
+    applied_at: Optional[datetime] = None
 
 
 class StationDashboardOut(BaseModel):

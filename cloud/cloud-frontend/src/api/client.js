@@ -61,6 +61,9 @@ export const api = {
   stationTankStats: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/stats`),
   stationStatsSummary: (id) => request(`/stations/${id}/stats/summary`),
   stationWeather: (id) => request(`/stations/${id}/weather`),
+  submitPriceUpdate: (id, tankLocalId, body) =>
+    request(`/stations/${id}/tanks/${tankLocalId}/price-updates`, { method: 'POST', body: JSON.stringify(body) }),
+  priceUpdates: (id) => request(`/stations/${id}/price-updates`),
 
   // ── T3: admin ──
   admin: {

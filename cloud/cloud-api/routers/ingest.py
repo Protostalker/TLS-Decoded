@@ -11,13 +11,13 @@ source, so DO NOTHING is both correct and cheaper.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from auth import verify_device
 from database import get_db
-from models import Station
+from models import PendingPriceUpdate, Station
 from schemas import IngestBatch, IngestResult
 
 router = APIRouter()
@@ -168,3 +168,44 @@ def ingest_batch(
     db.commit()
 
     return IngestResult(received=counts, synced_at=now)
+
+
+# ── Price updates queued from the cloud side (T1) ────────────────────────────
+#
+# The one narrow exception to "v1 sync is one-way": a price entered on the
+# cloud's T1 dashboard is queued here, and the station's own `sync`
+# container (device-credential auth, same as the push above) polls for its
+# pending rows and applies them locally. See routers/stations.py's
+# submit_price_update for how these get created.
+
+@router.get("/ingest/price-updates")
+def pending_price_updates(db: Session = Depends(get_db), station: Station = Depends(verify_device)):
+    rows = (
+        db.query(PendingPriceUpdate)
+        .filter(PendingPriceUpdate.station_id == station.id, PendingPriceUpdate.applied_at.is_(None))
+        .order_by(PendingPriceUpdate.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": r.id, "tank_local_id": r.tank_local_id,
+            "cost_per_gallon": float(r.cost_per_gallon) if r.cost_per_gallon is not None else None,
+            "tax_rate_percent": float(r.tax_rate_percent) if r.tax_rate_percent is not None else None,
+            "tax_fees_per_gallon": float(r.tax_fees_per_gallon) if r.tax_fees_per_gallon is not None else None,
+            "sale_price_per_gallon": float(r.sale_price_per_gallon) if r.sale_price_per_gallon is not None else None,
+            "effective_at": r.effective_at, "note": r.note,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/ingest/price-updates/{update_id}/ack")
+def ack_price_update(update_id: int, db: Session = Depends(get_db), station: Station = Depends(verify_device)):
+    row = db.query(PendingPriceUpdate).filter(
+        PendingPriceUpdate.id == update_id, PendingPriceUpdate.station_id == station.id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Price update not found")
+    row.applied_at = datetime.now(tz=timezone.utc)
+    db.commit()
+    return {"ok": True}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
+import Footer from '../components/Footer.jsx'
 
 const TABS = ['Customers', 'Stations', 'Users']
 
@@ -26,6 +27,7 @@ export default function AdminPage() {
         {tab === 'Stations' && <StationsTab />}
         {tab === 'Users' && <UsersTab />}
       </main>
+      <Footer />
     </div>
   )
 }
@@ -102,7 +104,7 @@ function CustomersTab() {
 function StationsTab() {
   const [stations, setStations] = useState(null)
   const [customers, setCustomers] = useState(null)
-  const [form, setForm] = useState({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '' })
+  const [form, setForm] = useState({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '', timezone: '' })
   const [error, setError] = useState(null)
   const [newCredential, setNewCredential] = useState(null)
 
@@ -120,9 +122,10 @@ function StationsTab() {
         customer_id: Number(form.customer_id), name: form.name,
         sync_interval_minutes: Number(form.sync_interval_minutes) || 30,
         zip_code: form.zip_code || null,
+        timezone: form.timezone || null,
       })
       setNewCredential(cred)
-      setForm({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '' })
+      setForm({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '', timezone: '' })
       load()
     } catch (e) { setError(e.message) }
   }
@@ -131,6 +134,14 @@ function StationsTab() {
     setError(null)
     try {
       await api.admin.updateStation(station.id, { zip_code: zip })
+      load()
+    } catch (e) { setError(e.message) }
+  }
+
+  const saveTimezone = async (station, tz) => {
+    setError(null)
+    try {
+      await api.admin.updateStation(station.id, { timezone: tz })
       load()
     } catch (e) { setError(e.message) }
   }
@@ -168,6 +179,10 @@ function StationsTab() {
           <input value={form.zip_code} onChange={e => setForm({ ...form, zip_code: e.target.value })}
                  style={{ ...inputStyle, width: 100 }} placeholder="90248" />
         </Field>
+        <Field label="Timezone (for 'today' math)">
+          <input value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })}
+                 style={{ ...inputStyle, width: 170 }} placeholder="America/Los_Angeles" />
+        </Field>
         <button type="submit" style={btn}>Provision station</button>
       </form>
 
@@ -196,7 +211,7 @@ function StationsTab() {
           <thead>
             <tr>
               <th style={th}>Name</th><th style={th}>Customer</th><th style={th}>Sync interval</th>
-              <th style={th}>Zip</th><th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
+              <th style={th}>Zip</th><th style={th}>Timezone</th><th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -206,6 +221,7 @@ function StationsTab() {
                 <td style={td}>{s.customer_name}</td>
                 <td style={td}>{s.sync_interval_minutes} min</td>
                 <td style={td}><ZipEditor station={s} onSave={saveZip} /></td>
+                <td style={td}><TimezoneEditor station={s} onSave={saveTimezone} /></td>
                 <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
                 <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>inactive</span>}</td>
                 <td style={{ ...td, display: 'flex', gap: 6 }}>
@@ -239,6 +255,33 @@ function ZipEditor({ station, onSave }) {
         onChange={e => setValue(e.target.value)}
         placeholder="90248"
         style={{ ...inputStyle, width: 70, padding: '4px 6px', fontSize: 11 }}
+      />
+      {dirty && (
+        <button onClick={save} disabled={saving} style={{ ...btnGhost, padding: '3px 8px', fontSize: 10 }}>
+          Save
+        </button>
+      )}
+    </div>
+  )
+}
+
+function TimezoneEditor({ station, onSave }) {
+  const [value, setValue] = useState(station.timezone || '')
+  const [saving, setSaving] = useState(false)
+  const dirty = value !== (station.timezone || '')
+
+  const save = async () => {
+    setSaving(true)
+    try { await onSave(station, value) } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <input
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        placeholder="America/Los_Angeles"
+        style={{ ...inputStyle, width: 150, padding: '4px 6px', fontSize: 11 }}
       />
       {dirty && (
         <button onClick={save} disabled={saving} style={{ ...btnGhost, padding: '3px 8px', fontSize: 10 }}>

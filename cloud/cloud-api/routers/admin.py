@@ -8,6 +8,7 @@ station credentials, and view/revoke any user's sessions.
 """
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -56,7 +57,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
     return StationOut(
         id=s.id, name=s.name, customer_id=s.customer_id, customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
-        zip_code=s.zip_code,
+        zip_code=s.zip_code, timezone=s.timezone,
     )
 
 
@@ -80,6 +81,7 @@ def create_station(body: StationCreate, db: Session = Depends(get_db)):
         device_secret_hash=hash_secret(device_secret),
         sync_interval_minutes=body.sync_interval_minutes,
         zip_code=(body.zip_code.strip() if body.zip_code else None),
+        timezone=(body.timezone.strip() if body.timezone else None),
         active=True, created_at=datetime.now(tz=timezone.utc),
     )
     db.add(s)
@@ -106,6 +108,14 @@ def update_station(station_id: int, body: StationUpdate, db: Session = Depends(g
         if candidate and not re.fullmatch(r"\d{5}(-\d{4})?", candidate):
             raise HTTPException(status_code=400, detail="zip_code must be a 5-digit (or ZIP+4) US zip code")
         s.zip_code = candidate or None
+    if body.timezone is not None:
+        candidate = body.timezone.strip()
+        if candidate:
+            try:
+                ZoneInfo(candidate)
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"'{candidate}' is not a recognized IANA timezone (e.g. America/Los_Angeles)")
+        s.timezone = candidate or None
     db.commit()
     db.refresh(s)
     return _station_out(db, s)

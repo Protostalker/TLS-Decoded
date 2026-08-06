@@ -53,6 +53,16 @@ sizes, and thresholds are all configurable.
   inbound connection or stable IP at the station. Fully optional and
   additive — see **Cloud (multi-station)** below. The station works exactly
   as described above with this disabled, which is the default.
+- **Pricing, one screen for every product** — cost, tax/fees, and sale price
+  per tank, live margin and today's profit, full price history. Update
+  every product from one panel instead of switching tanks one at a time —
+  works the same way locally and from the cloud portal (a cloud-side update
+  queues to the station and applies within seconds of it next checking in).
+- **Weather + maintenance heads-up (optional, cloud)** — set a station's zip
+  code from the cloud admin panel to get current conditions plus
+  forecast-driven reminders (rain → check tank vent cap covers, freeze →
+  heat tape, high wind → secure covers, etc.) on that station's dashboard
+  and rolled up on the multi-station hub.
 
 ---
 
@@ -67,10 +77,10 @@ sizes, and thresholds are all configurable.
 | `sync`     | Python, pushes to the cloud hub on a timer (idle until configured) | — |
 | `cloud-db`, `cloud-api`, `cloud-frontend` | Optional cloud hub for multi-station remote viewing | 5433, 8100, 5100 |
 
-**All of the above live in one `docker-compose.yml`.** `docker compose up`
-brings up everything, cloud hub included, unless you comment sections out —
-see **Cloud (multi-station)** below if you just want a plain station
-install with no cloud portal.
+**All of the above live in one `docker-compose.yml`.** Which services
+actually start is controlled by `COMPOSE_PROFILES` in `.env` — `install.sh`
+sets this for you based on the deployment mode you pick; see **Deployment
+modes** below.
 
 ## Hardware
 
@@ -89,21 +99,20 @@ install with no cloud portal.
 ```bash
 git clone https://github.com/Protostalker/TLS-Decoded.git
 cd TLS-Decoded
-
-cp .env.example .env
-cp config/tls-decoded.yaml.example config/tls-decoded.yaml
-# edit config/tls-decoded.yaml with your station name/address and the
-# gauge's IP — rough tank capacities are fine, you can correct them later
-# from the dashboard's Settings panel.
-
-docker compose up -d --build
+./install.sh
 ```
 
-> **Just want the station, no cloud portal?** `docker-compose.yml` ships
-> with both the station services and the optional cloud hub active in one
-> file. Open it and comment out the whole "CLOUD HUB services" section
-> (prefix each line with `#`) before running `docker compose up` — the
-> station works standalone either way. See **Cloud (multi-station)** below.
+`install.sh` is interactive and re-runnable: it asks what kind of
+deployment this box is, generates secrets, writes `.env` and
+`config/tls-decoded.yaml`, sets the docker compose profile(s) that control
+which services start, and optionally brings the stack up for you. Re-run it
+any time — every answer defaults to what's already configured, and none of
+it touches your database or historical readings.
+
+Prefer to do it by hand? `cp .env.example .env` and
+`cp config/tls-decoded.yaml.example config/tls-decoded.yaml`, fill them in
+yourself (see **Deployment modes** below for what `COMPOSE_PROFILES` needs
+to be), then `docker compose up -d --build`.
 
 Dashboard: **http://localhost:5005**
 API docs (Swagger UI): **http://localhost:8000/docs**
@@ -113,14 +122,35 @@ real station details and never get committed or touched by a `git pull`.
 
 ---
 
+## Deployment modes
+
+One `docker-compose.yml` covers every deployment shape; `COMPOSE_PROFILES`
+in `.env` decides which services actually start (services aren't part of
+any profile are never started — an empty/unset `COMPOSE_PROFILES` starts
+nothing). `install.sh` sets this for you based on the mode you pick:
+
+| Mode | `COMPOSE_PROFILES` | What runs |
+|---|---|---|
+| Local station | `station-core,station-ui` | Full station stack + its own local dashboard |
+| Cloud server | `cloud` | Cloud hub only — no station hardware on this box |
+| Poll-sync station | `station-core` | Station data pipeline + push to a remote cloud, but **no local dashboard** on this box |
+| Complete / demo | `station-core,station-ui,cloud` | Everything, one box — good for demos or a prototype |
+
+Poll-sync is for a site where nobody should look at a local URL at all —
+staff only ever check the cloud portal, so the `frontend` container never
+even starts here, while `db`/`api`/`poller`/`sync` run exactly as normal
+underneath it.
+
+---
+
 ## Updating (pulling future changes)
 
 ```bash
-git pull
-docker compose up -d --build
+./update.sh      # or update.bat on Windows
 ```
 
-That's the whole workflow. A few things make this safe to run any time:
+Just `git pull` + `docker compose up -d --build` for whatever's enabled via
+`COMPOSE_PROFILES` — a couple of things make this safe to run any time:
 
 - `.env` and `config/tls-decoded.yaml` are gitignored, so a pull never
   overwrites your local station config or credentials.
@@ -134,7 +164,9 @@ That's the whole workflow. A few things make this safe to run any time:
   the API and poller.
 
 If you want to see what changed before updating: `git log --oneline -10`
-or check the repo's commit history on GitHub.
+or check the repo's commit history on GitHub. Run `./install.sh` again
+instead of `update.sh` if you also want to change deployment mode, rotate
+secrets, or reconfigure ports.
 
 ---
 
@@ -158,6 +190,14 @@ gauges (chart, stats, tables, deliveries) reflects the selected tank.
 - **Confirm / edit** any entry to lock in the true number (e.g. from a
   delivery ticket) — once confirmed it won't be touched by auto-merging.
 - **+ Log delivery** manually reports a delivery that auto-detection missed.
+
+**Pricing — all products** — cost, tax/fees, sale price, live margin, and
+today's profit for every tank at once, plus per-tank history/editing lower
+down. Update every product's price without switching which tank is
+selected. The cloud portal has the same panel per station — a price
+entered there queues to the station and applies within seconds of it next
+checking in (v1 sync is otherwise one-way, station → cloud only; this is
+the one narrow exception).
 
 **Export bar** (bottom) — pick a month and download raw per-tank CSV,
 all-tanks CSV, or the Monthly Ledger CSV (Day / GAL / ADDED / SOLD per tank
@@ -202,11 +242,16 @@ good numbers instead of nothing.
 
 This is entirely additive — every station keeps running standalone exactly
 as described above regardless of the cloud hub. `docker-compose.yml`
-contains both halves as one file (comment out whichever section you don't
-need — see **Stack** above), and even with the cloud hub containers
-running, a given station's `sync` service stays idle until you configure
-it (from the local dashboard's Settings panel, or via env vars) — nothing
-gets pushed anywhere by default.
+contains all of it as one file, gated by `COMPOSE_PROFILES` (see
+**Deployment modes** above), and even with the cloud hub running, a given
+station's `sync` service stays idle until you configure it (from the local
+dashboard's Settings panel, or via env vars) — nothing gets pushed anywhere
+by default.
+
+The cloud portal also gets its own **Pricing** panel per station (queues an
+update back to the station — see **Using the dashboard** above) and an
+optional **weather** panel/heads-up per station once you set a zip code
+from Admin → Stations.
 
 Full setup, the auth model, and provisioning steps are in
 [`cloud/README.md`](cloud/README.md). Design rationale for how this is put
@@ -218,7 +263,10 @@ together is in [`CLOUD-ARCHITECTURE.md`](CLOUD-ARCHITECTURE.md).
 
 ```
 tls-decoded/
-├── docker-compose.yml
+├── install.sh                     # interactive, re-runnable installer — start here
+├── update.sh, update.bat          # git pull + docker compose up -d --build
+├── docker-compose.yml             # every service, gated by COMPOSE_PROFILES
+├── NOTICE.md                      # ownership / support info
 ├── config/
 │   ├── tls-decoded.yaml.example   # template — copy to tls-decoded.yaml
 │   └── tls-decoded.yaml           # your real config (gitignored)
@@ -234,7 +282,8 @@ tls-decoded/
 │   └── routers/
 │       ├── tanks.py, readings.py, insights.py
 │       ├── deliveries.py          # confirm / manually log
-│       ├── settings.py            # poll interval, device ID
+│       ├── pricing.py             # cost/tax/sale price history + margin calc
+│       ├── settings.py            # poll interval, device ID, cloud sync config
 │       └── export.py              # CSV exports
 ├── frontend/
 │   └── src/components/
@@ -242,13 +291,15 @@ tls-decoded/
 │       ├── TankGauge.jsx          # desktop cylinder / mobile square
 │       ├── FuelChart.jsx, StatsPanel.jsx
 │       ├── ReadingsTable.jsx, ConsumptionPanel.jsx, DeliveryPanel.jsx
-│       ├── ExportPanel.jsx, SettingsPanel.jsx
+│       ├── PricingPanel.jsx, AllPricingPanel.jsx   # per-tank + all-products pricing
+│       ├── ExportPanel.jsx, SettingsPanel.jsx, Footer.jsx
 ├── sync/                          # optional 5th station container — pushes to the cloud hub
-│   ├── main.py                    # checkpointed batch pushes, retry w/ backoff
+│   ├── main.py                    # checkpointed batch pushes, retry w/ backoff, applies queued price updates
 │   └── config.py
 └── cloud/                         # optional cloud hub — see cloud/README.md
     ├── docker-compose.cloud.yml
     ├── cloud-api/                 # Ingest API + T1/T2/T3 app API
+    │   └── weather.py             # zip -> forecast + maintenance recommendations
     └── cloud-frontend/            # login (T2), station dashboard (T1), admin (T3)
 ```
 
@@ -287,6 +338,16 @@ regardless of start order.
 
 - Reorder-threshold alerts (browser/desktop notifications)
 - Side-by-side tank comparison view
-- Remote config from the cloud side (poll interval, tank capacity, etc. pushed
-  down to a station) — v1 cloud sync is one-way, station → cloud only; see
-  `cloud/README.md` and `CLOUD-ARCHITECTURE.md`'s open questions
+- Broader remote config from the cloud side (poll interval, tank capacity,
+  etc. pushed down to a station) — pricing is the one thing that can be
+  pushed down today (see **Pricing** above); v1 cloud sync is otherwise
+  one-way, station → cloud only. See `cloud/README.md` and
+  `CLOUD-ARCHITECTURE.md`'s open questions.
+
+---
+
+## Support / ownership
+
+Built by **Healthcare Tech Solutions** — see [`NOTICE.md`](NOTICE.md) for
+contact info and licensing/resale terms. The same info is shown in the
+footer of every page in both the local dashboard and the cloud portal.

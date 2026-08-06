@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import Footer from '../components/Footer.jsx'
 
 const DURATIONS = [
   { value: 'short', label: 'Until I sign out' },
@@ -34,9 +35,12 @@ export default function LoginPage() {
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#0f1117', padding: 20,
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      background: '#0f1117',
     }}>
+      <div style={{
+        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}>
       <form onSubmit={submit} style={{
         width: 360, background: '#161b27', border: '1px solid #1e2130', borderRadius: 16,
         padding: 32, display: 'flex', flexDirection: 'column', gap: 16,
@@ -87,6 +91,8 @@ export default function LoginPage() {
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      </div>
+      <Footer />
     </div>
   )
 }

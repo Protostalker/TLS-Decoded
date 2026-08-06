@@ -43,6 +43,7 @@ def _migrate_schema() -> None:
     here, same pattern the station stack's api/poller/sync containers use."""
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS zip_code TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS timezone TEXT"))
 
 
 def _bootstrap_admin() -> None:

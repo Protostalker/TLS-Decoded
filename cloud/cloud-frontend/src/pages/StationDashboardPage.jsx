@@ -5,6 +5,8 @@ import { api } from '../api/client.js'
 import TopBar from '../components/TopBar.jsx'
 import TankGauge from '../components/TankGauge.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
+import PricingPanel from '../components/PricingPanel.jsx'
+import Footer from '../components/Footer.jsx'
 
 const POLL_MS = 60_000
 
@@ -80,6 +82,7 @@ export default function StationDashboardPage() {
             </div>
 
             <WeatherPanel stationId={id} />
+            <PricingPanel stationId={id} tanks={data.tanks} />
 
             <div style={{
               display: 'flex', justifyContent: 'center', overflowX: 'auto',
@@ -111,6 +114,7 @@ export default function StationDashboardPage() {
           </>
         )}
       </main>
+      <Footer />
     </div>
   )
 }

@@ -9,9 +9,11 @@ import ConsumptionPanel from './ConsumptionPanel.jsx'
 import DeliveryPanel from './DeliveryPanel.jsx'
 import StatsPanel from './StatsPanel.jsx'
 import PricingPanel from './PricingPanel.jsx'
+import AllPricingPanel from './AllPricingPanel.jsx'
 import TotalStatsPanel from './TotalStatsPanel.jsx'
 import ExportPanel from './ExportPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
+import Footer from './Footer.jsx'
 import useIsMobile from '../hooks/useIsMobile.js'
 
 const POLL_MS = 60_000
@@ -207,6 +209,14 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* All-products pricing — update every tank's price without
+                switching the tank selection above. */}
+            {data.tanks?.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <AllPricingPanel tanks={data.tanks} />
+              </div>
+            )}
+
             {/* History chart for selected tank */}
             {selectedTank && <FuelChart tank={selectedTank} />}
 
@@ -255,6 +265,8 @@ export default function Dashboard() {
             </div>
           </>
         )}
+
+        <Footer />
       </main>
     </div>
   )

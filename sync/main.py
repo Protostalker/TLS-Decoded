@@ -365,6 +365,55 @@ def push_with_retry(client: httpx.Client, cloud_url: str, headers: dict, batch: 
     return None
 
 
+# ── Price updates queued from the cloud side (T1) ────────────────────────────
+#
+# The one narrow exception to "v1 sync is one-way, station -> cloud only": a
+# price entered on the cloud's T1 dashboard can't write to this station's DB
+# directly, so it's queued cloud-side and picked up here every tick (not
+# gated behind the push interval — an operator waiting on a price change
+# shouldn't wait up to 30 minutes for it). Applying it locally makes
+# fuel_prices the single source of truth either way — the resulting row
+# flows back up to the cloud mirror through the normal push path next cycle,
+# same as if someone had typed it in at the station itself.
+
+def apply_pending_price_updates(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: str, headers: dict) -> int:
+    try:
+        resp = client.get(f"{cloud_url}/ingest/price-updates", headers=headers, timeout=15.0)
+        resp.raise_for_status()
+        updates = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Could not check for pending price updates: %s", exc)
+        return 0
+
+    applied = 0
+    for u in updates:
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO fuel_prices
+                            (tank_id, effective_at, cost_per_gallon, tax_fees_per_gallon,
+                             tax_rate_percent, sale_price_per_gallon, source, note, created_at)
+                        VALUES
+                            (:tank_id, :eff, :cost, :taxfee, :taxrate, :sale, 'cloud', :note, :created)
+                        """
+                    ),
+                    {
+                        "tank_id": u["tank_local_id"], "eff": u["effective_at"],
+                        "cost": u["cost_per_gallon"], "taxfee": u["tax_fees_per_gallon"],
+                        "taxrate": u["tax_rate_percent"], "sale": u["sale_price_per_gallon"],
+                        "note": u.get("note"), "created": datetime.now(tz=timezone.utc).isoformat(),
+                    },
+                )
+            client.post(f"{cloud_url}/ingest/price-updates/{u['id']}/ack", headers=headers, timeout=15.0)
+            applied += 1
+            logger.info("Applied cloud-submitted price update for tank %s (update id %s)", u["tank_local_id"], u["id"])
+        except Exception:
+            logger.exception("Failed to apply price update id %s — will retry next tick (not acked)", u.get("id"))
+    return applied
+
+
 # ── One sync cycle ────────────────────────────────────────────────────────────
 
 def run_sync_cycle(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: str, headers: dict, batch_size: int) -> bool:
@@ -463,16 +512,21 @@ def main() -> None:
             logger.info("Cloud sync configured (%s) — resuming.", cs["url"])
             was_idle = False
 
+        headers = {
+            "X-Station-Device-Id": cs["device_id"],
+            "X-Station-Device-Secret": cs["device_secret"],
+            "Content-Type": "application/json",
+        }
+
+        # Checked every tick, independent of the push interval below — a
+        # price update shouldn't have to wait up to 30 minutes.
+        apply_pending_price_updates(engine, client, cs["url"], headers)
+
         now = datetime.now(tz=timezone.utc)
         due = last_sync_at is None or (now - last_sync_at) >= timedelta(minutes=cs["interval_minutes"])
 
         if due:
             logger.info("--- Sync cycle starting ---")
-            headers = {
-                "X-Station-Device-Id": cs["device_id"],
-                "X-Station-Device-Secret": cs["device_secret"],
-                "Content-Type": "application/json",
-            }
             try:
                 caught_up = run_sync_cycle(engine, client, cs["url"], headers, cfg.batch_size)
                 logger.info("--- Sync cycle done (fully caught up=%s) ---", caught_up)

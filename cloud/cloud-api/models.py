@@ -62,6 +62,14 @@ class Station(Base):
     # on it, so it's safe to leave blank.
     zip_code: Mapped[str | None] = mapped_column(Text)
 
+    # IANA tz name (e.g. "America/Los_Angeles") — set by an admin from T3.
+    # Calendar-day boundaries ("today consumed", day-by-day margin) are
+    # computed in THIS timezone, matching how the station's own local
+    # dashboard defines "today" (see api/routers/insights.py's STATION_TZ).
+    # Falls back to America/Los_Angeles if unset — matches this codebase's
+    # only station so far; set explicitly for any station in another tz.
+    timezone: Mapped[str | None] = mapped_column(Text)
+
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
 
@@ -90,6 +98,33 @@ class UserStationAssignment(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), primary_key=True)
     station_id: Mapped[int] = mapped_column(Integer, ForeignKey("stations.id"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class PendingPriceUpdate(Base):
+    """
+    v1 sync is one-way (station -> cloud); this is a narrow, purpose-built
+    exception so a price can be updated from the cloud side (T1) without a
+    general remote-config channel. A user submits a price change here; the
+    station's own `sync` container polls for pending rows (device-credential
+    auth, same as ingest), applies them to the LOCAL fuel_prices table (the
+    source of truth), then acks. The resulting local row flows back up to
+    cloud_fuel_prices through the normal one-way push on the next cycle —
+    this table is just the outbound queue, never a second source of truth.
+    """
+    __tablename__ = "pending_price_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    station_id: Mapped[int] = mapped_column(Integer, ForeignKey("stations.id"), nullable=False)
+    tank_local_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    tax_fees_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    tax_rate_percent: Mapped[float | None] = mapped_column(Numeric(9, 4))
+    sale_price_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    effective_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
 class UserSession(Base):

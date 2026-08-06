@@ -11,6 +11,7 @@ view — "same pattern one level up," as the design doc puts it.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -18,8 +19,8 @@ from sqlalchemy.orm import Session
 
 from auth import assigned_station_ids, get_current_user, require_station_access
 from database import get_db
-from models import CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, Station, User
-from schemas import PredictionOut, ReadingOut, StationDashboardOut, StationOut, TankOut
+from models import CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, PendingPriceUpdate, Station, User
+from schemas import PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut, TankOut
 from weather import get_station_weather
 
 router = APIRouter()
@@ -32,7 +33,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
         id=s.id, name=s.name, customer_id=s.customer_id,
         customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
-        zip_code=s.zip_code,
+        zip_code=s.zip_code, timezone=s.timezone,
     )
 
 
@@ -119,11 +120,84 @@ def _consumption_rate_gal_per_hour(db: Session, station_id: int, tank_local_id: 
     return round(total_consumed / total_hours, 4) if total_hours > 0 else None
 
 
-def _compute_tank_stats(db: Session, station_id: int, tank: CloudTank) -> dict:
-    now = datetime.now(tz=timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # UTC calendar day; cloud is tz-agnostic across stations
+def station_tz(station: Station) -> ZoneInfo:
+    """Station's calendar-day timezone for 'today'/day-by-day math — matches
+    api/routers/insights.py's STATION_TZ on the station side. Falls back to
+    Pacific (this codebase's original/only station) if unset; set explicitly
+    from T3 (Admin -> Stations -> Timezone) for stations elsewhere."""
+    try:
+        return ZoneInfo(station.timezone) if station.timezone else ZoneInfo("America/Los_Angeles")
+    except Exception:
+        return ZoneInfo("America/Los_Angeles")
 
-    today_consumed = _consumed_since(db, station_id, tank.local_id, today_start)
+
+def _build_daily_breakdown(db: Session, station_id: int, tank_local_id: int, num_days: int, tz: ZoneInfo) -> list[dict]:
+    """Port of api/routers/insights.py's _build_daily_breakdown, scoped to
+    the cloud mirror's station_id/tank_local_id — day-by-day gallons valued
+    at the price *in effect on that day*, not today's price applied
+    retroactively. This is what total_margin_7d/30d must sum, or a
+    mid-week price change silently over/under-values the whole window."""
+    today_local = datetime.now(tz=tz).date()
+    day_starts = [
+        datetime(*(today_local - timedelta(days=num_days - 1 - i)).timetuple()[:3], tzinfo=tz)
+        for i in range(num_days)
+    ]
+    window_start = day_starts[0] - timedelta(hours=2)
+    window_end = day_starts[-1] + timedelta(days=1)
+
+    rows = (
+        db.query(CloudReading)
+        .filter(
+            CloudReading.station_id == station_id, CloudReading.tank_local_id == tank_local_id,
+            CloudReading.polled_at >= window_start, CloudReading.polled_at < window_end,
+            CloudReading.volume_gallons.isnot(None),
+        )
+        .order_by(CloudReading.polled_at.asc())
+        .all()
+    )
+
+    day_gallons: dict = {ds.date(): 0.0 for ds in day_starts}
+    for i in range(1, len(rows)):
+        prev, curr = rows[i - 1], rows[i]
+        delta = prev.volume_gallons - curr.volume_gallons
+        if delta <= 0:
+            continue
+        curr_day = curr.polled_at.astimezone(tz).date()
+        if curr_day in day_gallons:
+            day_gallons[curr_day] = round(day_gallons[curr_day] + delta, 1)
+
+    breakdown = []
+    for ds in day_starts:
+        d = ds.date()
+        gallons = day_gallons.get(d, 0.0)
+        mpg = _effective_margin(db, station_id, tank_local_id, ds)
+        breakdown.append({
+            "date": d.isoformat(), "gallons": gallons,
+            "margin_per_gallon": mpg,
+            "margin_dollars": round(gallons * mpg, 2) if mpg is not None else None,
+        })
+    return breakdown
+
+
+def _safe_margin_sum(breakdown: list[dict]) -> Optional[float]:
+    vals = [e["margin_dollars"] for e in breakdown if e["margin_dollars"] is not None]
+    return round(sum(vals), 2) if vals else None
+
+
+def _compute_tank_stats(db: Session, station: Station, tank: CloudTank) -> dict:
+    station_id = station.id
+    tz = station_tz(station)
+    now = datetime.now(tz=timezone.utc)
+
+    # "Today" = midnight in the STATION's own local timezone, not UTC — a
+    # station well west of UTC (e.g. Pacific) would otherwise show a
+    # truncated "today" for most of the afternoon/evening. Matches the
+    # station's own local dashboard exactly (see insights.py).
+    now_local = datetime.now(tz=tz)
+    today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_consumed = _consumed_since(db, station_id, tank.local_id, today_start_local)
+
+    # Rolling 7-day window — no calendar boundary involved, UTC is fine.
     week_consumed = _consumed_since(db, station_id, tank.local_id, now - timedelta(days=7))
 
     rate = _consumption_rate_gal_per_hour(db, station_id, tank.local_id, 720)  # 30d
@@ -143,15 +217,18 @@ def _compute_tank_stats(db: Session, station_id: int, tank: CloudTank) -> dict:
     water = latest.water_inches if latest else None
     current_volume = latest.volume_gallons if latest and latest.volume_gallons else None
 
+    # Day-by-day margin breakdown — each day's gallons valued at the price
+    # that was actually in effect that day, then summed. Replaces the old
+    # "week_consumed * today's current margin" shortcut, which overstates
+    # (or understates) the week whenever a price changed mid-week.
+    breakdown_7d = _build_daily_breakdown(db, station_id, tank.local_id, 7, tz)
+
     current_margin = _effective_margin(db, station_id, tank.local_id, now)
     today_profit = (
         round(today_consumed * current_margin, 2)
         if today_consumed is not None and current_margin is not None else None
     )
-    week_margin = (
-        round(week_consumed * current_margin, 2)
-        if week_consumed is not None and current_margin is not None else None
-    )
+    week_margin = _safe_margin_sum(breakdown_7d)
 
     return {
         "tank_local_id": tank.local_id,
@@ -190,7 +267,7 @@ def combined_stats(user: User = Depends(get_current_user), db: Session = Depends
             .order_by(CloudTank.local_id)
             .all()
         )
-        tank_stats = [_compute_tank_stats(db, s.id, t) for t in tanks]
+        tank_stats = [_compute_tank_stats(db, s, t) for t in tanks]
         per_station.append((s, tank_stats))
 
     def _sum_across(tss_list: list[dict], key: str) -> Optional[float]:
@@ -448,23 +525,90 @@ def station_tank_stats(
     station_id: int, tank_local_id: int,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    require_station_access(station_id, db, user)
+    station = require_station_access(station_id, db, user)
     tank = db.query(CloudTank).filter(CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id).first()
     if not tank:
         raise HTTPException(status_code=404, detail="Tank not found")
-    return _compute_tank_stats(db, station_id, tank)
+    return _compute_tank_stats(db, station, tank)
+
+
+# ── Price updates from the cloud side (T1) ───────────────────────────────────
+#
+# v1 sync is one-way (station -> cloud), so a price change entered here can't
+# write straight to the station's DB. Instead it's queued as a
+# PendingPriceUpdate; the station's own `sync` container polls for pending
+# rows (see routers/ingest.py's device-credential endpoints + sync/main.py)
+# and applies them locally, same as an operator typing it in at the station.
+
+def _price_update_out(p: PendingPriceUpdate) -> dict:
+    return {
+        "id": p.id, "station_id": p.station_id, "tank_local_id": p.tank_local_id,
+        "cost_per_gallon": float(p.cost_per_gallon) if p.cost_per_gallon is not None else None,
+        "tax_rate_percent": float(p.tax_rate_percent) if p.tax_rate_percent is not None else None,
+        "tax_fees_per_gallon": float(p.tax_fees_per_gallon) if p.tax_fees_per_gallon is not None else None,
+        "sale_price_per_gallon": float(p.sale_price_per_gallon) if p.sale_price_per_gallon is not None else None,
+        "effective_at": p.effective_at, "note": p.note, "created_at": p.created_at, "applied_at": p.applied_at,
+    }
+
+
+@router.post("/stations/{station_id}/tanks/{tank_local_id}/price-updates")
+def submit_price_update(
+    station_id: int, tank_local_id: int, body: PriceUpdateRequest,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+    if not db.query(CloudTank).filter(CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id).first():
+        raise HTTPException(status_code=404, detail="Tank not found")
+    if body.cost_per_gallon < 0 or body.sale_price_per_gallon < 0:
+        raise HTTPException(status_code=400, detail="Prices must be >= 0")
+
+    tax_fees = body.tax_fees_per_gallon
+    if body.tax_rate_percent is not None:
+        tax_fees = round(body.cost_per_gallon * body.tax_rate_percent / 100, 6)
+
+    row = PendingPriceUpdate(
+        station_id=station_id, tank_local_id=tank_local_id,
+        cost_per_gallon=body.cost_per_gallon, tax_rate_percent=body.tax_rate_percent,
+        tax_fees_per_gallon=tax_fees, sale_price_per_gallon=body.sale_price_per_gallon,
+        effective_at=body.effective_at or datetime.now(tz=timezone.utc),
+        note=body.note, created_by_user_id=user.id, created_at=datetime.now(tz=timezone.utc),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _price_update_out(row)
+
+
+@router.get("/stations/{station_id}/price-updates")
+def list_price_updates(
+    station_id: int, limit: int = 20,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """Recent price-update requests for this station (pending and applied),
+    so the UI can show 'submitted, waiting for the station to pick it up'
+    vs. 'applied at {time}' — the station polls on its own sync interval, so
+    this isn't instant, same honesty-about-latency as the staleness badges."""
+    require_station_access(station_id, db, user)
+    rows = (
+        db.query(PendingPriceUpdate)
+        .filter(PendingPriceUpdate.station_id == station_id)
+        .order_by(PendingPriceUpdate.created_at.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
+    return [_price_update_out(r) for r in rows]
 
 
 @router.get("/stations/{station_id}/stats/summary")
 def station_stats_summary(station_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    require_station_access(station_id, db, user)
+    station = require_station_access(station_id, db, user)
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
         .order_by(CloudTank.local_id)
         .all()
     )
-    tank_stats = [_compute_tank_stats(db, station_id, t) for t in tanks]
+    tank_stats = [_compute_tank_stats(db, station, t) for t in tanks]
 
     def _sum(key: str) -> Optional[float]:
         vals = [t[key] for t in tank_stats if t[key] is not None]

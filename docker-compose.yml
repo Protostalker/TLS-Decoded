@@ -2,23 +2,39 @@
 #   1. STATION services (db, api, poller, frontend, sync)
 #   2. CLOUD HUB services (cloud-db, cloud-api, cloud-frontend)
 #
-# One command brings up whatever isn't commented out:
+# One command brings up whatever's enabled:
 #   docker compose up -d --build
 #
-# This file is meant to be edited per install. Comment out (prefix every
-# line with #) whichever whole section you don't need for this box:
+# ── Recommended: let install.sh drive this ──────────────────────────────────
+# `./install.sh` asks what kind of deployment this box is and writes the
+# right COMPOSE_PROFILES value into .env for you — see the Quick start /
+# Deployment modes sections in README.md. It's re-runnable any time you want
+# to change modes, rotate secrets, or reconfigure.
 #
-#   - Local-only station (no cloud) → comment out the entire
-#     "CLOUD HUB services" section below. `sync` can stay in either way —
-#     it's idle and harmless until configured (see cloud/README.md).
-#   - Cloud-only host (the actual cloud hub, no station hardware here) →
-#     comment out the entire "STATION services" section below.
-#   - Prototype / one box doing both (the common case right now) → leave
-#     everything uncommented, as shipped.
+# ── Manual / no installer ────────────────────────────────────────────────────
+# Compose profiles gate which services actually start. Set COMPOSE_PROFILES
+# in .env to a comma-separated list of the profiles you want active:
 #
-# Config: copy .env.example to .env and fill in the values relevant to
-# whichever section(s) you're using — station vars for STATION services,
-# CLOUD_* vars for CLOUD HUB services. Unused vars in .env are harmless.
+#   station-core   db, api, poller, sync   — the station's own data pipeline
+#   station-ui     frontend                 — the station's local dashboard
+#   cloud          cloud-db, cloud-api, cloud-frontend — the cloud hub
+#
+# Deployment modes:
+#   Local station only      → COMPOSE_PROFILES=station-core,station-ui
+#   Cloud hub only           → COMPOSE_PROFILES=cloud
+#   Poll-sync (no local UI)  → COMPOSE_PROFILES=station-core
+#     (station data pipeline runs and pushes to a remote cloud, but nobody
+#     views this station's own local dashboard — frontend stays off)
+#   Complete / demo          → COMPOSE_PROFILES=station-core,station-ui,cloud
+#
+# A service with no `profiles:` key always starts regardless of
+# COMPOSE_PROFILES — none are left that way here on purpose, so an empty/unset
+# COMPOSE_PROFILES starts nothing rather than silently defaulting to "all."
+#
+# Config: copy .env.example to .env (or run install.sh, which does this for
+# you) and fill in the values relevant to whichever profile(s) you're using —
+# station vars for station-core/station-ui, CLOUD_* vars for cloud. Unused
+# vars in .env are harmless.
 #
 # Note: if you later move the cloud hub to its own dedicated box (see
 # CLOUD-ARCHITECTURE.md), cloud/docker-compose.cloud.yml is the same CLOUD
@@ -27,11 +43,14 @@
 
 services:
   # ════════════════════════════════════════════════════════════════════════
-  # STATION services — comment out this whole section for a cloud-only host
+  # STATION services — profile "station-core" (db/api/poller/sync) +
+  # "station-ui" (frontend) kept separate so a poll-sync deployment can run
+  # the data pipeline without exposing a local dashboard.
   # ════════════════════════════════════════════════════════════════════════
 
   db:
     image: postgres:16-alpine
+    profiles: ["station-core", "station-ui"]
     environment:
       POSTGRES_DB: tls_decoded
       POSTGRES_USER: tls
@@ -48,6 +67,7 @@ services:
 
   api:
     build: ./api
+    profiles: ["station-core", "station-ui"]
     depends_on:
       db:
         condition: service_healthy
@@ -67,6 +87,7 @@ services:
 
   poller:
     build: ./poller
+    profiles: ["station-core", "station-ui"]
     depends_on:
       db:
         condition: service_healthy
@@ -86,6 +107,7 @@ services:
     build:
       context: ./frontend
       target: production
+    profiles: ["station-ui"]
     ports:
       - "${FRONTEND_PORT:-5005}:80"
     depends_on:
@@ -101,10 +123,11 @@ services:
   # before first `up`), OR directly from the local dashboard's Settings ->
   # Cloud sync panel at any time after — both write to the same live-editable
   # settings table, so the dashboard path needs no restart. See cloud/README.md.
-  # Safe to leave in even on a station that will never use cloud sync — it
-  # just sits idle. Comment it out too if you'd rather not build it at all.
+  # In "station-ui" profile too (not just station-core) so a full local
+  # install always gets it — it's harmless idle weight either way.
   sync:
     build: ./sync
+    profiles: ["station-core", "station-ui"]
     depends_on:
       db:
         condition: service_healthy
@@ -117,13 +140,13 @@ services:
     restart: unless-stopped
 
   # ════════════════════════════════════════════════════════════════════════
-  # CLOUD HUB services — comment out this whole section for a local-only
-  # station install with no cloud portal. See cloud/README.md for the full
+  # CLOUD HUB services — profile "cloud". See cloud/README.md for the full
   # picture (auth model, provisioning a station, staleness indicators, etc).
   # ════════════════════════════════════════════════════════════════════════
 
   cloud-db:
     image: postgres:16-alpine
+    profiles: ["cloud"]
     environment:
       POSTGRES_DB: tls_decoded_cloud
       POSTGRES_USER: tls_cloud
@@ -140,6 +163,7 @@ services:
 
   cloud-api:
     build: ./cloud/cloud-api
+    profiles: ["cloud"]
     depends_on:
       cloud-db:
         condition: service_healthy
@@ -164,6 +188,7 @@ services:
     build:
       context: ./cloud/cloud-frontend
       target: production
+    profiles: ["cloud"]
     ports:
       - "${CLOUD_FRONTEND_PORT:-5100}:80"
     depends_on:

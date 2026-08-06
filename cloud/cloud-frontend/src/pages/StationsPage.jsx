@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client.js'
 import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
+import Footer from '../components/Footer.jsx'
 
 const card = {
   background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 18,
@@ -36,7 +37,7 @@ export default function StationsPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#0f1117' }}>
       <TopBar title="Your Stations" />
-      <main style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+      <main style={{ padding: 24, maxWidth: 1260, margin: '0 auto' }}>
         {error && <ErrorBox message={error} />}
 
         {stations === null && !error && (
@@ -88,7 +89,10 @@ export default function StationsPage() {
         )}
 
         {stations && stations.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 380px))',
+            justifyContent: 'center', gap: 16,
+          }}>
             {stations.map(s => {
               const stat = summary?.stations?.find(x => x.station_id === s.id)
               const w = weather?.[s.id]
@@ -155,6 +159,7 @@ export default function StationsPage() {
           </div>
         )}
       </main>
+      <Footer />
     </div>
   )
 }

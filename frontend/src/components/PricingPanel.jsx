@@ -12,7 +12,7 @@ const inputStyle = {
 }
 const fieldLabel = { fontSize: 10, color: '#64748b', marginBottom: 3 }
 
-function money(n, digits = 3) {
+export function money(n, digits = 3) {
   return n == null ? '—' : `$${Number(n).toFixed(digits)}`
 }
 
@@ -42,7 +42,7 @@ function Tile({ label, value, accent, sub }) {
   )
 }
 
-function PriceForm({ tank, initial, onDone, onCancel }) {
+export function PriceForm({ tank, initial, onDone, onCancel }) {
   const [cost, setCost] = useState(initial?.cost_per_gallon ?? '')
   const [taxRate, setTaxRate] = useState(initial?.tax_rate_percent ?? '')
   const [sale, setSale] = useState(initial?.sale_price_per_gallon ?? '')
