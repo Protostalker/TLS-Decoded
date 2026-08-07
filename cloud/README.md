@@ -244,21 +244,37 @@ them straight onto that station's `stations` row (`brand_preset`,
 `brand_logo_data_url`). The cloud has no UI to set these itself — it's a
 read-only mirror, same one-way relationship as everything else in v1 sync.
 
+**Color model:** a station sets 3 raw colors — `primary`, `secondary`,
+`accent`. `accent` drives the *background*; everything else (surfaces,
+borders, well/input backgrounds, text) is derived from it via WCAG
+contrast-ratio comparison (`cloud/cloud-frontend/src/brandTheme.js`'s
+`deriveBrandPalette`, mirroring `frontend/src/brandPresets.js` exactly —
+not a naive luminance threshold, which misjudges mid-tone colors like a
+medium gold). `primary`/`secondary` pass through unchanged for buttons,
+selected states, and badges. Tank fill colors and the gauge illustration
+itself deliberately stay neutral (status — full/empty/low — not brand).
+
 Where it applies is deliberately asymmetric, per how the two tiers are
 used:
 
 - **T1** (a single station's dashboard, cloud-served) applies the full
-  theme — same 3 CSS custom properties (`--brand-primary`,
-  `--brand-secondary`, `--brand-accent`) and logo the local dashboard uses,
-  scoped to that page only. Navigating away (T2, Admin, Login) unsets them,
-  so one station's colors never bleed into the shared chrome.
-- **T2** (the multi-station picker) never re-themes its own chrome —
-  intentionally, since a customer with stations under different brands
-  shouldn't have the whole hub flip colors depending on load order. Each
-  station's card shows a small accent (a left border stripe + a small
-  logo/monogram badge) using that station's own color/logo values as
-  literal inline styles, not the global CSS vars, so multiple brands can
-  sit side by side in the grid.
+  derived theme as CSS custom properties on the document root
+  (`--brand-bg`, `--brand-surface`, `--brand-border`, `--brand-text`, etc.
+  — see `applyBrandTheme`), scoped to that page only. Navigating away (T2,
+  Admin, Login) unsets them, so one station's colors never bleed into the
+  shared chrome — those pages simply fall back to the tokens' neutral
+  defaults, since they never call `applyBrandTheme` themselves.
+- **T2** (the multi-station picker) never re-themes its own chrome
+  (TopBar, Overview bar, page background stay neutral) — intentionally,
+  since a customer with stations under different brands shouldn't have the
+  whole hub flip colors depending on load order. Instead, each station's
+  *card* renders its own full mini-theme: `deriveBrandPalette()` is called
+  directly (not through the CSS vars, which can only ever hold one
+  station's theme at a time) and applied as literal inline styles — card
+  background, border, text, badge, and tank pills all use that station's
+  own derived palette, so a card is effectively a small preview of what
+  that station's T1 page looks like. Multiple brands can sit side by side
+  in the grid this way, at a glance, without opening any one station.
 
 ## Local dev (without Docker)
 

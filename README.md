@@ -66,11 +66,15 @@ sizes, and thresholds are all configurable.
 - **Branding** — set a station's dashboard colors from Settings: pick a
   named fuel-brand preset (Arco, Sinclair, Chevron, Mobil, Pemex, Buc-ee's —
   color associations only, no trademarked logo artwork bundled) or set 3
-  custom colors, plus an optional custom logo upload. If a station syncs to
-  the cloud, its branding mirrors up automatically and applies to that
-  station's page on the cloud portal (T1) and as a small accent on its card
-  in the multi-station picker (T2) — see **Cloud (multi-station)** below for
-  how the two are scoped differently.
+  custom colors, plus an optional custom logo upload. The accent color
+  drives the page background; everything else (surfaces, borders, text) is
+  derived from it by contrast so it stays readable regardless of how light
+  or dark the accent is. Tank fill colors and the gauge illustration stay
+  neutral (status, not brand). If a station syncs to the cloud, its
+  branding mirrors up automatically and applies to that station's page on
+  the cloud portal (T1), plus its own themed card in the multi-station
+  picker (T2) — see **Cloud (multi-station)** below for how the two are
+  scoped differently.
 
 ---
 
@@ -268,12 +272,13 @@ optional **weather** panel/heads-up per station once you set a zip code
 from Admin → Stations.
 
 **Branding** mirrors up the same way: whatever colors/logo a station has set
-locally show up on that station's own page in the cloud portal (T1) — the
-cloud never sets or overrides it, it only reflects what the station last
-pushed. The multi-station picker (T2) never re-themes itself to match any
-one station (useful if a customer runs stations under different brands) —
-it just shows a small color/logo accent on each station's card so you can
-tell them apart at a glance.
+locally show up on that station's own page in the cloud portal (T1), fully
+themed — the cloud never sets or overrides it, it only reflects what the
+station last pushed. The multi-station picker (T2) never re-themes its own
+chrome to match any one station (useful if a customer runs stations under
+different brands) — but each station's card in the grid shows that
+station's full theme (colors, logo), so you can tell stations apart at a
+glance without opening any one of them.
 
 Full setup, the auth model, and provisioning steps are in
 [`cloud/README.md`](cloud/README.md). Design rationale for how this is put

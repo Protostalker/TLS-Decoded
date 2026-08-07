@@ -64,11 +64,11 @@ export default function StationDashboardPage() {
   const selectedPrediction = data?.predictions?.find(p => p.tank_local_id === selectedTankId) ?? null
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1117' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--brand-bg, #0f1117)', color: 'var(--brand-text, #e2e8f0)' }}>
       <TopBar title={data?.station_name ?? 'Station'} backTo="/" logoDataUrl={data?.brand_logo_data_url} />
 
       <main style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-        {loading && <div style={{ textAlign: 'center', padding: 80, color: '#475569' }}>Loading station…</div>}
+        {loading && <div style={{ textAlign: 'center', padding: 80, color: 'var(--brand-text-faint, #475569)' }}>Loading station…</div>}
 
         {error && !loading && (
           <div style={{
@@ -85,7 +85,7 @@ export default function StationDashboardPage() {
                 cloud sync lag vs. the station's own local poll lag. */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
               <StalenessBadge lastSyncAt={data.last_sync_at} label="Cloud data as of" />
-              <span style={{ fontSize: 11, color: '#475569' }}>
+              <span style={{ fontSize: 11, color: 'var(--brand-text-faint, #475569)' }}>
                 Station's own last poll:{' '}
                 {data.last_poll_at ? format(parseISO(data.last_poll_at), 'MMM d, HH:mm:ss') : '—'}
                 {data.last_poll_success === false && (
@@ -146,7 +146,7 @@ function WeatherPanel({ stationId }) {
   if (!weather || !weather.configured) return null
   if (!weather.available) {
     return (
-      <div style={{ ...panelBox, marginBottom: 16, color: '#64748b', fontSize: 12 }}>
+      <div style={{ ...panelBox, marginBottom: 16, color: 'var(--brand-text-dimmer, #64748b)', fontSize: 12 }}>
         Weather unavailable for this station's zip code right now.
       </div>
     )
@@ -158,11 +158,11 @@ function WeatherPanel({ stationId }) {
     <div style={{ ...panelBox, marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Weather — {location}</div>
-          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>
-            {current.temperature}°{current.temperature_unit} <span style={{ fontSize: 13, fontWeight: 500, color: '#94a3b8' }}>{current.short_forecast}</span>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)' }}>Weather — {location}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4, color: 'var(--brand-text, #e2e8f0)' }}>
+            {current.temperature}°{current.temperature_unit} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--brand-text-dim, #94a3b8)' }}>{current.short_forecast}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 2 }}>
             {current.period} · Wind {current.wind_speed} {current.wind_direction}
             {current.precipitation_chance != null && ` · ${current.precipitation_chance}% precip`}
           </div>
@@ -171,8 +171,8 @@ function WeatherPanel({ stationId }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', maxWidth: 420 }}>
           {forecast.slice(0, 4).map((p, i) => (
             <div key={i} style={{ textAlign: 'center', fontSize: 11 }}>
-              <div style={{ color: '#64748b' }}>{p.period}</div>
-              <div style={{ fontWeight: 700 }}>{p.temperature}°{p.temperature_unit}</div>
+              <div style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{p.period}</div>
+              <div style={{ fontWeight: 700, color: 'var(--brand-text, #e2e8f0)' }}>{p.temperature}°{p.temperature_unit}</div>
             </div>
           ))}
         </div>
@@ -195,14 +195,14 @@ function WeatherPanel({ stationId }) {
 }
 
 const panelBox = {
-  background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 16,
+  background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 14, padding: 16,
 }
 
 function PredictionCard({ prediction }) {
   if (!prediction) return null
   return (
     <div style={{
-      background: '#161b27', border: '1px solid #1e2130', borderRadius: 14,
+      background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 14,
       padding: 16, marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12,
     }}>
       <Field label="Consumption rate" value={prediction.consumption_rate_gal_per_day ? `${prediction.consumption_rate_gal_per_day.toFixed(0)} gal/day` : '—'} />
@@ -257,13 +257,13 @@ function TankDetail({ stationId, tank }) {
         {!deliveries ? <Muted /> : deliveries.length === 0 ? <Muted text="No deliveries recorded yet" /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ color: '#64748b', textAlign: 'left' }}>
+              <tr style={{ color: 'var(--brand-text-dimmer, #64748b)', textAlign: 'left' }}>
                 <th style={th}>Detected</th><th style={th}>Gallons received</th><th style={th}>Confirmed</th>
               </tr>
             </thead>
             <tbody>
               {deliveries.slice(0, 10).map(d => (
-                <tr key={d.local_id} style={{ borderTop: '1px solid #1e2130' }}>
+                <tr key={d.local_id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
                   <td style={td}>{format(parseISO(d.detected_at), 'MMM d, HH:mm')}</td>
                   <td style={td}>{Math.round(d.effective_gallons_received ?? d.gallons_received ?? 0).toLocaleString()} gal</td>
                   <td style={td}>{d.confirmed ? 'Yes' : 'Pending'}</td>
@@ -280,10 +280,10 @@ function TankDetail({ stationId, tank }) {
 function Panel({ title, children, span2 }) {
   return (
     <div style={{
-      background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 16,
+      background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 14, padding: 16,
       gridColumn: span2 ? '1 / -1' : undefined,
     }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 12 }}>{title}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 12 }}>{title}</div>
       {children}
     </div>
   )
@@ -292,8 +292,8 @@ function Panel({ title, children, span2 }) {
 function Row({ label, value, warn }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-      <span style={{ color: '#64748b' }}>{label}</span>
-      <span style={{ color: warn ? '#fca5a5' : '#e2e8f0', fontWeight: 600 }}>{value}</span>
+      <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{label}</span>
+      <span style={{ color: warn ? '#fca5a5' : 'var(--brand-text, #e2e8f0)', fontWeight: 600 }}>{value}</span>
     </div>
   )
 }
@@ -301,14 +301,14 @@ function Row({ label, value, warn }) {
 function Field({ label, value }) {
   return (
     <div>
-      <div style={{ color: '#64748b', fontSize: 10 }}>{label}</div>
-      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>{value}</div>
+      <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 10 }}>{label}</div>
+      <div style={{ color: 'var(--brand-text, #e2e8f0)', fontWeight: 700 }}>{value}</div>
     </div>
   )
 }
 
 function Muted({ text = 'Loading…' }) {
-  return <div style={{ color: '#475569', fontSize: 12 }}>{text}</div>
+  return <div style={{ color: 'var(--brand-text-faint, #475569)', fontSize: 12 }}>{text}</div>
 }
 
 const th = { padding: '6px 8px', fontWeight: 600 }

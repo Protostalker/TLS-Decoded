@@ -23,10 +23,12 @@ export default function TankGauge({ tank }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 8,
-      background: '#1e2130', borderRadius: 16, padding: 16,
-      border: '1.5px solid #2d3348', minWidth: 160,
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 16, padding: 16,
+      border: '1.5px solid var(--brand-border, #2d3348)', minWidth: 160,
     }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#94a3b8' }}>{tank.name}</div>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--brand-text-dim, #94a3b8)' }}>{tank.name}</div>
+      {/* Vessel illustration + fill stay neutral (status, not brand) — same
+          call as the local T1 gauge's fillColor. */}
       <div style={{
         position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: 12,
         background: '#111827', border: '1px solid #374151', overflow: 'hidden',
@@ -49,7 +51,7 @@ export default function TankGauge({ tank }) {
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#64748b' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)' }}>
         <span>↑ {ullage.toLocaleString(undefined, { maximumFractionDigits: 0 })} gal</span>
         {temp !== null && <span>🌡 {temp.toFixed(0)}°F</span>}
       </div>

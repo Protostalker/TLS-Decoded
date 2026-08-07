@@ -6,13 +6,13 @@ import React from 'react'
 export default function Footer() {
   return (
     <footer style={{
-      borderTop: '1px solid #1e2130', marginTop: 40, padding: '24px',
+      borderTop: '1px solid var(--brand-border-soft, #1e2130)', marginTop: 40, padding: '24px',
       display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 20,
       maxWidth: 1260, marginLeft: 'auto', marginRight: 'auto',
     }}>
       <div style={{ maxWidth: 420 }}>
-        <div style={{ fontWeight: 800, fontSize: 13, color: '#e2e8f0' }}>Healthcare Tech Solutions</div>
-        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, lineHeight: 1.5 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--brand-text, #e2e8f0)' }}>Healthcare Tech Solutions</div>
+        <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 4, lineHeight: 1.5 }}>
           HIPAA-compliant IT, security, and infrastructure for clinics and small businesses.
           Based in Los Angeles &amp; Orange County, serving clients nationwide.
         </div>
@@ -23,7 +23,7 @@ export default function Footer() {
       </div>
 
       <div>
-        <div style={{ fontWeight: 700, fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--brand-text-dim, #94a3b8)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
           Contact
         </div>
         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
@@ -31,7 +31,7 @@ export default function Footer() {
           <a href="mailto:Raffi@Healthcaretechsolutions.org" style={linkStyle}>Raffi@Healthcaretechsolutions.org</a>
           <a href="mailto:ticket@healthcaretechsolutions.org" style={linkStyle}>Submit a Ticket</a>
           <a href="https://healthcaretechsolutions.org/contact.html#support" target="_blank" rel="noreferrer" style={linkStyle}>Remote Support</a>
-          <span style={{ color: '#475569' }}>Los Angeles, CA</span>
+          <span style={{ color: 'var(--brand-text-faint, #475569)' }}>Los Angeles, CA</span>
         </div>
       </div>
     </footer>

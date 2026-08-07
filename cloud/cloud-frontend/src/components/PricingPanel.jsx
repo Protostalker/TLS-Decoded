@@ -4,13 +4,13 @@ import { api } from '../api/client.js'
 
 const btn = {
   padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-  border: '1px solid #374151', background: 'transparent', color: '#cbd5e1',
+  border: '1px solid var(--brand-border-soft, #374151)', background: 'transparent', color: 'var(--brand-text, #cbd5e1)',
 }
 const inputStyle = {
-  background: '#0b0f19', border: '1px solid #374151', borderRadius: 6,
-  color: '#e2e8f0', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box',
+  background: 'var(--brand-surface-2, #0b0f19)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6,
+  color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box',
 }
-const fieldLabel = { fontSize: 10, color: '#64748b', marginBottom: 3 }
+const fieldLabel = { fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }
 
 function money(n, digits = 3) {
   return n === null || n === undefined ? '—' : `$${Number(n).toFixed(digits)}`
@@ -48,7 +48,7 @@ function PriceUpdateForm({ stationId, tank, onDone, onCancel }) {
   }
 
   return (
-    <div style={{ background: '#111827', border: '1px solid #2d3348', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+    <div style={{ background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <div style={{ width: 120 }}>
           <div style={fieldLabel}>Cost / gal</div>
@@ -68,7 +68,7 @@ function PriceUpdateForm({ stationId, tank, onDone, onCancel }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button style={{ ...btn, background: '#3b82f6', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
+        <button style={{ ...btn, background: 'var(--brand-primary, #3b82f6)', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
           Queue update
         </button>
         <button style={btn} onClick={onCancel}>Cancel</button>
@@ -103,12 +103,12 @@ export default function PricingPanel({ stationId, tanks }) {
   if (!tanks?.length) return null
 
   return (
-    <div style={{ background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 12 }}>Pricing — all products</div>
+    <div style={{ background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 12 }}>Pricing — all products</div>
 
       {pending.length > 0 && (
         <div style={{
-          fontSize: 11, color: '#93c5fd', background: '#0f1c33', border: '1px solid #1e3a5f',
+          fontSize: 11, color: '#93c5fd', background: 'var(--brand-primary-soft, #0f1c33)', border: '1px solid #1e3a5f',
           borderRadius: 8, padding: '8px 10px', marginBottom: 12,
         }}>
           {pending.length} update{pending.length > 1 ? 's' : ''} queued — applied next time the station checks in
@@ -116,7 +116,7 @@ export default function PricingPanel({ stationId, tanks }) {
         </div>
       )}
 
-      {loading && <div style={{ color: '#64748b', fontSize: 12 }}>Loading…</div>}
+      {loading && <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 12 }}>Loading…</div>}
 
       {!loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -124,20 +124,20 @@ export default function PricingPanel({ stationId, tanks }) {
             const p = prices[tank.local_id]
             const pendingForTank = pending.filter(u => u.tank_local_id === tank.local_id)
             return (
-              <div key={tank.local_id} style={{ background: '#111827', border: '1px solid #2d3348', borderRadius: 8, padding: '10px 12px' }}>
+              <div key={tank.local_id} style={{ background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, minWidth: 100 }}>{tank.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, minWidth: 100, color: 'var(--brand-text, #e2e8f0)' }}>{tank.name}</div>
                   {p ? (
-                    <div style={{ fontSize: 12, color: '#cbd5e1', flex: 1 }}>
+                    <div style={{ fontSize: 12, color: 'var(--brand-text, #cbd5e1)', flex: 1 }}>
                       cost {money(p.cost_per_gallon, 4)} · sale {money(p.sale_price_per_gallon, 4)}
                       {' · '}
                       <span style={{ color: p.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
                         margin {money(p.margin_per_gallon, 4)}
                       </span>
-                      <span style={{ color: '#475569' }}> · as of {format(parseISO(p.effective_at), 'MMM d, HH:mm')}</span>
+                      <span style={{ color: 'var(--brand-text-faint, #475569)' }}> · as of {format(parseISO(p.effective_at), 'MMM d, HH:mm')}</span>
                     </div>
                   ) : (
-                    <div style={{ fontSize: 12, color: '#64748b', flex: 1 }}>No pricing mirrored yet</div>
+                    <div style={{ fontSize: 12, color: 'var(--brand-text-dimmer, #64748b)', flex: 1 }}>No pricing mirrored yet</div>
                   )}
                   <button style={btn} onClick={() => setEditingTankId(editingTankId === tank.local_id ? null : tank.local_id)}>
                     {editingTankId === tank.local_id ? '× Cancel' : 'Update'}
