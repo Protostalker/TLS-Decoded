@@ -70,6 +70,18 @@ class Station(Base):
     # only station so far; set explicitly for any station in another tz.
     timezone: Mapped[str | None] = mapped_column(Text)
 
+    # Branding — mirrored FROM the station (set locally, Settings ->
+    # Branding), never edited from the cloud side. A customer with stations
+    # under different fuel brands sees each one themed correctly: T1 for
+    # this station uses these colors/logo; the T2 picker only uses them for
+    # a small per-card accent, never for its own chrome. See
+    # routers/ingest.py's station_info handling and sync/main.py's push.
+    brand_preset: Mapped[str | None] = mapped_column(Text)
+    brand_primary_color: Mapped[str | None] = mapped_column(Text)
+    brand_secondary_color: Mapped[str | None] = mapped_column(Text)
+    brand_accent_color: Mapped[str | None] = mapped_column(Text)
+    brand_logo_data_url: Mapped[str | None] = mapped_column(Text)
+
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
 

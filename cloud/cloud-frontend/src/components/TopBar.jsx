@@ -1,8 +1,12 @@
 import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import BrandLogo from './BrandLogo.jsx'
 
-export default function TopBar({ title, backTo }) {
+// logoDataUrl is only ever passed by StationDashboardPage (T1) — every other
+// caller (T2 station list, Admin, Login) renders the default gradient badge
+// since --brand-* CSS vars are unset there. See brandTheme.js for scoping.
+export default function TopBar({ title, backTo, logoDataUrl }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -18,12 +22,7 @@ export default function TopBar({ title, backTo }) {
             color: '#64748b', textDecoration: 'none', fontSize: 13, marginRight: 4,
           }}>← Back</Link>
         )}
-        <div style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: 'linear-gradient(135deg,#3b82f6,#6366f1)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, fontWeight: 800, color: '#fff',
-        }}>T</div>
+        <BrandLogo logoDataUrl={logoDataUrl} size={32} />
         <div>
           <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.3 }}>
             {title ?? 'TLS-Decoded Cloud'}

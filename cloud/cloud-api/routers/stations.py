@@ -34,6 +34,9 @@ def _station_out(db: Session, s: Station) -> StationOut:
         customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
         zip_code=s.zip_code, timezone=s.timezone,
+        brand_preset=s.brand_preset, brand_primary_color=s.brand_primary_color,
+        brand_secondary_color=s.brand_secondary_color, brand_accent_color=s.brand_accent_color,
+        brand_logo_data_url=s.brand_logo_data_url,
     )
 
 
@@ -424,6 +427,9 @@ def station_dashboard(station_id: int, user: User = Depends(get_current_user), d
         station_id=station.id, station_name=station.name, tanks=tank_outs, predictions=predictions,
         last_poll_at=last_poll_at, last_poll_success=last_poll_success, last_poll_error=last_poll_error,
         last_sync_at=station.last_sync_at,
+        brand_preset=station.brand_preset, brand_primary_color=station.brand_primary_color,
+        brand_secondary_color=station.brand_secondary_color, brand_accent_color=station.brand_accent_color,
+        brand_logo_data_url=station.brand_logo_data_url,
     )
 
 

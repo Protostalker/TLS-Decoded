@@ -7,6 +7,7 @@ import TankGauge from '../components/TankGauge.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import PricingPanel from '../components/PricingPanel.jsx'
 import Footer from '../components/Footer.jsx'
+import { applyBrandTheme } from '../brandTheme.js'
 
 const POLL_MS = 60_000
 
@@ -47,12 +48,24 @@ export default function StationDashboardPage() {
     }
   }, [data, selectedTankId])
 
+  // T1-only theme: apply this station's mirrored brand colors as CSS vars,
+  // and always unset them on unmount/change so navigating to T2/Admin/Login
+  // (which share the same document root) never inherits another station's
+  // colors. See brandTheme.js and the design note in CLOUD-ARCHITECTURE.md.
+  const { brand_primary_color, brand_secondary_color, brand_accent_color } = data || {}
+  useEffect(() => {
+    const cleanup = applyBrandTheme({
+      primary: brand_primary_color, secondary: brand_secondary_color, accent: brand_accent_color,
+    })
+    return cleanup
+  }, [brand_primary_color, brand_secondary_color, brand_accent_color])
+
   const selectedTank = data?.tanks?.find(t => t.local_id === selectedTankId) ?? null
   const selectedPrediction = data?.predictions?.find(p => p.tank_local_id === selectedTankId) ?? null
 
   return (
     <div style={{ minHeight: '100vh', background: '#0f1117' }}>
-      <TopBar title={data?.station_name ?? 'Station'} backTo="/" />
+      <TopBar title={data?.station_name ?? 'Station'} backTo="/" logoDataUrl={data?.brand_logo_data_url} />
 
       <main style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
         {loading && <div style={{ textAlign: 'center', padding: 80, color: '#475569' }}>Loading station…</div>}
@@ -94,7 +107,7 @@ export default function StationDashboardPage() {
                   return (
                     <div key={tank.local_id} onClick={() => setSelectedTankId(tank.local_id)} style={{
                       cursor: 'pointer',
-                      outline: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
+                      outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
                       outlineOffset: 3, borderRadius: 16, transition: 'outline 0.15s',
                     }}>
                       <TankGauge tank={tank} />

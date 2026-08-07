@@ -98,13 +98,22 @@ export default function StationsPage() {
               const w = weather?.[s.id]
               return (
                 <Link key={s.id} to={`/stations/${s.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <div style={{ ...card, cursor: 'pointer', transition: 'border-color 0.15s' }}
-                       onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                  <div style={{
+                         ...card, cursor: 'pointer', transition: 'border-color 0.15s',
+                         borderLeft: `3px solid ${s.brand_primary_color || '#1e2130'}`,
+                       }}
+                       onMouseEnter={e => e.currentTarget.style.borderColor = s.brand_primary_color || '#3b82f6'}
                        onMouseLeave={e => e.currentTarget.style.borderColor = '#1e2130'}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 16 }}>{s.name}</div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{s.customer_name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {/* Per-card brand accent only — literal colors from this
+                            station's own mirrored fields, never the global
+                            --brand-* CSS vars (those stay reserved for T1). */}
+                        <StationBadge station={s} />
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 16 }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{s.customer_name}</div>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         {stat?.water_alert && (
@@ -161,6 +170,31 @@ export default function StationsPage() {
       </main>
       <Footer />
     </div>
+  )
+}
+
+// Per-card only — deliberately does NOT reuse BrandLogo/brandTheme.js, which
+// read the global --brand-* CSS vars. Those vars are reserved for T1
+// (StationDashboardPage) alone; a station picker card must show its brand
+// using that station's own field values directly, without touching global
+// theme state, so cards for different brands can sit side by side and the
+// page chrome (TopBar, Overview bar) never shifts color.
+function StationBadge({ station }) {
+  const { brand_logo_data_url: logo, brand_primary_color: primary, brand_secondary_color: secondary } = station
+  if (logo) {
+    return (
+      <img
+        src={logo} alt="" width={28} height={28}
+        style={{ borderRadius: 7, objectFit: 'contain', background: '#fff', flexShrink: 0 }}
+      />
+    )
+  }
+  if (!primary) return null
+  return (
+    <div style={{
+      width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+      background: secondary ? `linear-gradient(135deg, ${primary}, ${secondary})` : primary,
+    }} />
   )
 }
 

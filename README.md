@@ -63,6 +63,14 @@ sizes, and thresholds are all configurable.
   forecast-driven reminders (rain → check tank vent cap covers, freeze →
   heat tape, high wind → secure covers, etc.) on that station's dashboard
   and rolled up on the multi-station hub.
+- **Branding** — set a station's dashboard colors from Settings: pick a
+  named fuel-brand preset (Arco, Sinclair, Chevron, Mobil, Pemex, Buc-ee's —
+  color associations only, no trademarked logo artwork bundled) or set 3
+  custom colors, plus an optional custom logo upload. If a station syncs to
+  the cloud, its branding mirrors up automatically and applies to that
+  station's page on the cloud portal (T1) and as a small accent on its card
+  in the multi-station picker (T2) — see **Cloud (multi-station)** below for
+  how the two are scoped differently.
 
 ---
 
@@ -203,6 +211,12 @@ the one narrow exception).
 all-tanks CSV, or the Monthly Ledger CSV (Day / GAL / ADDED / SOLD per tank
 + total, matching a typical manual spreadsheet).
 
+**Branding** (Settings ⚙) — pick a preset (a handful of well-known fuel
+brands, by color association only) or set 3 custom colors, and optionally
+upload a logo (stored as-is, no external file hosting needed). Applies
+immediately, no restart. If cloud sync is on, the same colors/logo mirror up
+on the next sync cycle.
+
 ---
 
 ## API reference
@@ -252,6 +266,14 @@ The cloud portal also gets its own **Pricing** panel per station (queues an
 update back to the station — see **Using the dashboard** above) and an
 optional **weather** panel/heads-up per station once you set a zip code
 from Admin → Stations.
+
+**Branding** mirrors up the same way: whatever colors/logo a station has set
+locally show up on that station's own page in the cloud portal (T1) — the
+cloud never sets or overrides it, it only reflects what the station last
+pushed. The multi-station picker (T2) never re-themes itself to match any
+one station (useful if a customer runs stations under different brands) —
+it just shows a small color/logo accent on each station's card so you can
+tell them apart at a glance.
 
 Full setup, the auth model, and provisioning steps are in
 [`cloud/README.md`](cloud/README.md). Design rationale for how this is put

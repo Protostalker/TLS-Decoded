@@ -58,6 +58,9 @@ def _station_out(db: Session, s: Station) -> StationOut:
         id=s.id, name=s.name, customer_id=s.customer_id, customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
         zip_code=s.zip_code, timezone=s.timezone,
+        brand_preset=s.brand_preset, brand_primary_color=s.brand_primary_color,
+        brand_secondary_color=s.brand_secondary_color, brand_accent_color=s.brand_accent_color,
+        brand_logo_data_url=s.brand_logo_data_url,
     )
 
 

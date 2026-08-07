@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { formatDistanceToNow, parseISO } from 'date-fns'
 import { api } from '../api/client.js'
 import PollLogPanel from './PollLogPanel.jsx'
+import BrandLogo from './BrandLogo.jsx'
+import { BRAND_PRESETS, findPreset, fileToDataUrl } from '../brandPresets.js'
 
 function nextSlotsPreview(intervalMinutes) {
   if (!intervalMinutes || intervalMinutes <= 0) return ''
@@ -99,6 +101,14 @@ export default function SettingsPanel({ open, onClose }) {
   const [cloudSyncInterval, setCloudSyncInterval] = useState(30)
   const [showSecret, setShowSecret] = useState(false)
 
+  // Branding — theme colors + logo for this station's dashboard.
+  const [brandPreset, setBrandPreset] = useState('default')
+  const [brandPrimary, setBrandPrimary] = useState('#3b82f6')
+  const [brandSecondary, setBrandSecondary] = useState('#6366f1')
+  const [brandAccent, setBrandAccent] = useState('#3b82f6')
+  const [brandLogo, setBrandLogo] = useState('')
+  const [logoError, setLogoError] = useState(null)
+
   const load = useCallback(async () => {
     try {
       const [s, t] = await Promise.all([api.settings(), api.tanks()])
@@ -112,6 +122,11 @@ export default function SettingsPanel({ open, onClose }) {
       setCloudSyncDeviceId(s.cloud_sync_device_id)
       setCloudSyncDeviceSecret(s.cloud_sync_device_secret)
       setCloudSyncInterval(s.cloud_sync_interval_minutes)
+      setBrandPreset(s.brand_preset)
+      setBrandPrimary(s.brand_primary_color)
+      setBrandSecondary(s.brand_secondary_color)
+      setBrandAccent(s.brand_accent_color)
+      setBrandLogo(s.brand_logo_data_url)
     } catch (e) {
       setStatus({ type: 'error', msg: e.message })
     }
@@ -172,6 +187,41 @@ export default function SettingsPanel({ open, onClose }) {
     cloud_sync_device_secret: cloudSyncDeviceSecret,
     cloud_sync_interval_minutes: cloudSyncInterval,
   }, 'Cloud sync settings saved — the sync service picks this up within ~15s, no restart needed.')
+
+  const applyPreset = (id) => {
+    const p = findPreset(id)
+    setBrandPreset(id)
+    if (id !== 'custom') {
+      setBrandPrimary(p.primary)
+      setBrandSecondary(p.secondary)
+      setBrandAccent(p.accent)
+    }
+  }
+
+  const handleLogoUpload = async (e) => {
+    setLogoError(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 1_800_000) {
+      setLogoError('Image is too large — please use a file under ~1.5MB.')
+      return
+    }
+    const dataUrl = await fileToDataUrl(file)
+    if (!dataUrl) {
+      setLogoError('Could not read that file as an image.')
+      return
+    }
+    setBrandLogo(dataUrl)
+    setBrandPreset('custom')
+  }
+
+  const saveBranding = () => save({
+    brand_preset: brandPreset,
+    brand_primary_color: brandPrimary,
+    brand_secondary_color: brandSecondary,
+    brand_accent_color: brandAccent,
+    brand_logo_data_url: brandLogo,
+  }, 'Branding saved.')
 
   return (
     <div style={{
@@ -388,6 +438,85 @@ export default function SettingsPanel({ open, onClose }) {
                       {cloudSyncEnabled ? 'Not synced yet — first push happens within ~15s of saving.' : 'Never synced.'}
                     </span>}
               </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid #2d3348', margin: '4px 0 20px' }} />
+
+            {/* Branding */}
+            <div style={row}>
+              <label style={label}>Branding</label>
+              <div style={hint}>
+                Theme the dashboard with a preset's colors or your own — none of these bundled
+                presets use a real brand's logo artwork; upload your own logo file below for that.
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0' }}>
+                <BrandLogo logoDataUrl={brandLogo} size={40} />
+                <div style={{ fontSize: 11, color: '#64748b' }}>Preview</div>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                {BRAND_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => applyPreset(p.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px',
+                      borderRadius: 7, cursor: 'pointer', fontSize: 11,
+                      border: brandPreset === p.id ? '1.5px solid #3b82f6' : '1px solid #374151',
+                      background: brandPreset === p.id ? '#0f1c33' : 'transparent',
+                      color: '#cbd5e1',
+                    }}
+                  >
+                    <span style={{ display: 'flex' }}>
+                      {[p.primary, p.secondary, p.accent].map((c, i) => (
+                        <span key={i} style={{
+                          width: 10, height: 10, borderRadius: '50%', background: c,
+                          border: '1px solid #00000055', marginLeft: i > 0 ? -3 : 0,
+                        }} />
+                      ))}
+                    </span>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Primary</div>
+                  <input type="color" value={brandPrimary}
+                    onChange={e => { setBrandPrimary(e.target.value); setBrandPreset('custom') }}
+                    style={{ width: '100%', height: 32, border: '1px solid #374151', borderRadius: 6, background: 'transparent' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Secondary</div>
+                  <input type="color" value={brandSecondary}
+                    onChange={e => { setBrandSecondary(e.target.value); setBrandPreset('custom') }}
+                    style={{ width: '100%', height: 32, border: '1px solid #374151', borderRadius: 6, background: 'transparent' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Accent</div>
+                  <input type="color" value={brandAccent}
+                    onChange={e => { setBrandAccent(e.target.value); setBrandPreset('custom') }}
+                    style={{ width: '100%', height: 32, border: '1px solid #374151', borderRadius: 6, background: 'transparent' }} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Custom logo (optional)</div>
+                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ fontSize: 11, color: '#94a3b8' }} />
+                {brandLogo && (
+                  <button style={{ ...btn(false), marginLeft: 8, padding: '4px 8px', fontSize: 10 }}
+                    onClick={() => setBrandLogo('')}>
+                    Remove logo
+                  </button>
+                )}
+                {logoError && <div style={{ color: '#fca5a5', fontSize: 11, marginTop: 4 }}>{logoError}</div>}
+              </div>
+
+              <button disabled={saving} style={{ ...btn(true), width: '100%' }} onClick={saveBranding}>
+                Save branding
+              </button>
             </div>
 
             {status && (

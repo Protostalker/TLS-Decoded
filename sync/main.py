@@ -133,6 +133,32 @@ CLOUD_SYNC_KEYS = (
     "cloud_sync_device_secret", "cloud_sync_interval_minutes",
 )
 
+# Branding is station-owned config, not telemetry — pushed alongside the
+# regular batch below (best-effort, never blocks/fails the sync cycle) so
+# the cloud's mirrored copy of "what this station looks like" stays in sync
+# with whatever was last saved in the local dashboard's Settings panel. See
+# api/routers/settings.py for where these keys get written locally.
+BRAND_KEYS = (
+    "brand_preset", "brand_primary_color", "brand_secondary_color",
+    "brand_accent_color", "brand_logo_data_url",
+)
+
+
+def get_branding_settings(engine: sqlalchemy.Engine) -> dict:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT key, value FROM settings WHERE key = ANY(:keys)"),
+            {"keys": list(BRAND_KEYS)},
+        ).fetchall()
+    v = {r.key: r.value for r in rows}
+    return {
+        "brand_preset": v.get("brand_preset") or None,
+        "brand_primary_color": v.get("brand_primary_color") or None,
+        "brand_secondary_color": v.get("brand_secondary_color") or None,
+        "brand_accent_color": v.get("brand_accent_color") or None,
+        "brand_logo_data_url": v.get("brand_logo_data_url") or None,
+    }
+
 
 def get_setting(engine: sqlalchemy.Engine, key: str) -> Optional[str]:
     with engine.connect() as conn:
@@ -464,6 +490,18 @@ def run_sync_cycle(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: s
             logger.info("Synced %d %s", len(rows), table)
             if len(rows) < batch_size:
                 break
+
+    # Branding — best-effort, no checkpoint (there's only ever one "current"
+    # value per station, so every cycle just sends the latest). A failure
+    # here is logged but never flips any_failure — losing a theme push for
+    # one cycle isn't worth retrying the whole sync loop over, it'll just go
+    # out again next cycle.
+    try:
+        branding = get_branding_settings(engine)
+        if any(branding.values()):
+            push_with_retry(client, cloud_url, headers, {"station_info": branding}, max_attempts=1)
+    except Exception:
+        logger.exception("Failed to push branding — will retry next cycle")
 
     return not any_failure
 

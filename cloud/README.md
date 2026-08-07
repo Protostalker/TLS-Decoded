@@ -232,6 +232,34 @@ one-way push on the next cycle. The panel shows "queued" vs. "applied at
 {time}" so it's honest about the latency — usually seconds if the station
 is online, longer if it's offline until it reconnects.
 
+## Branding (station → cloud, mirrored — not editable from the cloud)
+
+A station's Branding settings (preset/colors/logo, set locally in Settings
+⚙ → Branding) mirror up to the cloud as part of the normal push cycle —
+`sync/main.py` sends the current values as a `station_info` object
+alongside the regular batch, best-effort (a failed push here doesn't fail
+the sync cycle; it just goes out again next tick). The Ingest API writes
+them straight onto that station's `stations` row (`brand_preset`,
+`brand_primary_color`, `brand_secondary_color`, `brand_accent_color`,
+`brand_logo_data_url`). The cloud has no UI to set these itself — it's a
+read-only mirror, same one-way relationship as everything else in v1 sync.
+
+Where it applies is deliberately asymmetric, per how the two tiers are
+used:
+
+- **T1** (a single station's dashboard, cloud-served) applies the full
+  theme — same 3 CSS custom properties (`--brand-primary`,
+  `--brand-secondary`, `--brand-accent`) and logo the local dashboard uses,
+  scoped to that page only. Navigating away (T2, Admin, Login) unsets them,
+  so one station's colors never bleed into the shared chrome.
+- **T2** (the multi-station picker) never re-themes its own chrome —
+  intentionally, since a customer with stations under different brands
+  shouldn't have the whole hub flip colors depending on load order. Each
+  station's card shows a small accent (a left border stripe + a small
+  logo/monogram badge) using that station's own color/logo values as
+  literal inline styles, not the global CSS vars, so multiple brands can
+  sit side by side in the grid.
+
 ## Local dev (without Docker)
 
 ```bash

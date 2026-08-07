@@ -161,6 +161,12 @@ class SettingsOut(BaseModel):
     cloud_sync_device_secret: str
     cloud_sync_interval_minutes: int
     cloud_sync_last_synced_at: Optional[datetime] = None
+    # Branding — see routers/settings.py's _brand_defaults()/validation.
+    brand_preset: str
+    brand_primary_color: str
+    brand_secondary_color: str
+    brand_accent_color: str
+    brand_logo_data_url: str
 
 
 class SettingsUpdate(BaseModel):
@@ -174,6 +180,11 @@ class SettingsUpdate(BaseModel):
     cloud_sync_device_id: Optional[str] = None
     cloud_sync_device_secret: Optional[str] = None
     cloud_sync_interval_minutes: Optional[int] = None
+    brand_preset: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_secondary_color: Optional[str] = None
+    brand_accent_color: Optional[str] = None
+    brand_logo_data_url: Optional[str] = None
 
 
 class DeviceIdOut(BaseModel):

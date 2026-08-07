@@ -52,6 +52,20 @@ def _yaml_defaults() -> dict:
         }
 
 
+def _brand_defaults() -> dict:
+    """Branding — theme colors + logo for this station's dashboard. Empty
+    string logo means 'no custom logo, show the generated monogram badge'.
+    Colors default to the app's original blue/indigo so an unbranded
+    install looks exactly like it always has."""
+    return {
+        "brand_preset": "default",
+        "brand_primary_color": "#3b82f6",
+        "brand_secondary_color": "#6366f1",
+        "brand_accent_color": "#3b82f6",
+        "brand_logo_data_url": "",
+    }
+
+
 def _cloud_sync_defaults() -> dict:
     """cloud_sync_* keys aren't sourced from tls-decoded.yaml (no schema
     entry there — see sync/config.py's own env-var loader) — they're
@@ -73,7 +87,7 @@ def _get_all(db: Session) -> dict[str, str]:
     """Read all settings rows, seeding any missing keys with YAML/generated defaults."""
     rows = db.query(Setting).all()
     values = {r.key: (r.value or "") for r in rows}
-    defaults = {**_yaml_defaults(), **_cloud_sync_defaults()}
+    defaults = {**_yaml_defaults(), **_cloud_sync_defaults(), **_brand_defaults()}
     missing = {k: v for k, v in defaults.items() if k not in values}
     if missing:
         for k, v in missing.items():
@@ -111,6 +125,11 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         cloud_sync_device_secret=v.get("cloud_sync_device_secret") or "",
         cloud_sync_interval_minutes=int(v.get("cloud_sync_interval_minutes") or 30),
         cloud_sync_last_synced_at=last_synced,
+        brand_preset=v.get("brand_preset") or "default",
+        brand_primary_color=v.get("brand_primary_color") or "#3b82f6",
+        brand_secondary_color=v.get("brand_secondary_color") or "#6366f1",
+        brand_accent_color=v.get("brand_accent_color") or "#3b82f6",
+        brand_logo_data_url=v.get("brand_logo_data_url") or "",
     )
 
 
@@ -173,6 +192,29 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
                 detail="cloud_sync_interval_minutes must be between 1 and 1440",
             )
         _set(db, "cloud_sync_interval_minutes", str(update.cloud_sync_interval_minutes))
+
+    # ── Branding ──────────────────────────────────────────────────────────
+    if update.brand_preset is not None:
+        _set(db, "brand_preset", update.brand_preset.strip()[:64])
+
+    for field in ("brand_primary_color", "brand_secondary_color", "brand_accent_color"):
+        value = getattr(update, field)
+        if value is not None:
+            candidate = value.strip()
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", candidate):
+                raise HTTPException(status_code=400, detail=f"{field} must be a hex color like #3b82f6")
+            _set(db, field, candidate.lower())
+
+    if update.brand_logo_data_url is not None:
+        candidate = update.brand_logo_data_url.strip()
+        if candidate:
+            if not candidate.startswith("data:image/"):
+                raise HTTPException(status_code=400, detail="brand_logo_data_url must be a data:image/... URL")
+            # ~2.5MB of base64 (~1.8MB actual image) — plenty for a logo,
+            # keeps the settings row from growing unreasonably large.
+            if len(candidate) > 2_500_000:
+                raise HTTPException(status_code=400, detail="Logo image is too large — please use a smaller file (under ~1.5MB)")
+        _set(db, "brand_logo_data_url", candidate)
 
     return _to_out(_get_all(db))
 

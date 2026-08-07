@@ -44,6 +44,11 @@ def _migrate_schema() -> None:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS zip_code TEXT"))
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS timezone TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_preset TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_primary_color TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_secondary_color TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_accent_color TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_logo_data_url TEXT"))
 
 
 def _bootstrap_admin() -> None:

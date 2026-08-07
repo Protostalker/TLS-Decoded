@@ -163,6 +163,33 @@ def ingest_batch(
         )
         counts["poll_log"] += 1
 
+    # Branding is mirrored FROM the station's own local settings — the cloud
+    # never sets it independently. Only touch columns the station actually
+    # sent (all fields optional so a station running an older sync image
+    # that never sends station_info leaves the cloud's copy untouched).
+    if batch.station_info is not None:
+        db.execute(
+            text(
+                """
+                UPDATE stations SET
+                    brand_preset = :preset,
+                    brand_primary_color = :primary,
+                    brand_secondary_color = :secondary,
+                    brand_accent_color = :accent,
+                    brand_logo_data_url = :logo
+                WHERE id = :sid
+                """
+            ),
+            {
+                "sid": station.id,
+                "preset": batch.station_info.brand_preset,
+                "primary": batch.station_info.brand_primary_color,
+                "secondary": batch.station_info.brand_secondary_color,
+                "accent": batch.station_info.brand_accent_color,
+                "logo": batch.station_info.brand_logo_data_url,
+            },
+        )
+
     now = datetime.now(tz=timezone.utc)
     db.execute(text("UPDATE stations SET last_sync_at = :now WHERE id = :sid"), {"now": now, "sid": station.id})
     db.commit()

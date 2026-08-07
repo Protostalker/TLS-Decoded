@@ -14,6 +14,8 @@ import TotalStatsPanel from './TotalStatsPanel.jsx'
 import ExportPanel from './ExportPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import Footer from './Footer.jsx'
+import BrandLogo from './BrandLogo.jsx'
+import { applyBrandTheme } from '../brandPresets.js'
 import useIsMobile from '../hooks/useIsMobile.js'
 
 const POLL_MS = 60_000
@@ -24,8 +26,30 @@ export default function Dashboard() {
   const [error, setError]             = useState(null)
   const [loading, setLoading]         = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [brand, setBrand]             = useState(null)
   const timer                         = useRef(null)
   const isMobile                      = useIsMobile()
+
+  // Branding — fetched once (separately from the polled dashboard payload)
+  // and applied as CSS vars app-wide; re-fetched whenever Settings closes
+  // in case it was just changed.
+  const loadBrand = useCallback(async () => {
+    try {
+      const s = await api.settings()
+      setBrand(s)
+      return applyBrandTheme({
+        primary: s.brand_primary_color, secondary: s.brand_secondary_color, accent: s.brand_accent_color,
+      })
+    } catch {
+      return () => {}
+    }
+  }, [])
+
+  useEffect(() => {
+    let cleanup = () => {}
+    loadBrand().then(fn => { cleanup = fn })
+    return () => cleanup()
+  }, [loadBrand, settingsOpen])
 
   // NOTE: this must stay dependency-free (no selectedTankId here). It used to
   // read selectedTankId to decide whether to default-select a tank, but since
@@ -80,12 +104,7 @@ export default function Dashboard() {
         display:'flex', alignItems:'center', justifyContent:'space-between',
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-          <div style={{
-            width:32, height:32, borderRadius:8,
-            background:'linear-gradient(135deg,#3b82f6,#6366f1)',
-            display:'flex', alignItems:'center', justifyContent:'center',
-            fontSize:18, fontWeight:800, color:'#fff',
-          }}>T</div>
+          <BrandLogo logoDataUrl={brand?.brand_logo_data_url} size={32} />
           <div>
             <div style={{ fontWeight:800, fontSize:16, letterSpacing:-0.3 }}>
               {data?.station_name ?? 'TLS-Decoded'}
@@ -167,7 +186,7 @@ export default function Dashboard() {
                     return (
                       <div key={tank.id} onClick={() => setSelected(tank.id)} style={{
                         cursor:'pointer',
-                        outline: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
+                        outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
                         outlineOffset:3, borderRadius:18, transition:'outline 0.15s',
                       }}>
                         <TankGauge tank={tank} />
@@ -196,7 +215,7 @@ export default function Dashboard() {
                     return (
                       <div key={tank.id} onClick={() => setSelected(tank.id)} style={{
                         cursor:'pointer', display:'flex', flexDirection:'column', gap:10,
-                        outline: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
+                        outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
                         outlineOffset:3, borderRadius:14, transition:'outline 0.15s',
                         flexShrink:0, scrollSnapAlign:'center',
                       }}>

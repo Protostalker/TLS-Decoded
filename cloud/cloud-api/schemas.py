@@ -67,12 +67,24 @@ class IngestPollLog(BaseModel):
     duration_ms: Optional[int] = None
 
 
+class IngestStationInfo(BaseModel):
+    """Mirrored FROM the station, not editable from the cloud side — see
+    cloud/README.md's Branding section. All optional; sync only sends what
+    it has."""
+    brand_preset: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_secondary_color: Optional[str] = None
+    brand_accent_color: Optional[str] = None
+    brand_logo_data_url: Optional[str] = None
+
+
 class IngestBatch(BaseModel):
     tanks: list[IngestTank] = []
     readings: list[IngestReading] = []
     delivery_events: list[IngestDeliveryEvent] = []
     fuel_prices: list[IngestFuelPrice] = []
     poll_log: list[IngestPollLog] = []
+    station_info: Optional[IngestStationInfo] = None
 
 
 class IngestResult(BaseModel):
@@ -124,6 +136,11 @@ class StationOut(BaseModel):
     active: bool
     zip_code: Optional[str] = None
     timezone: Optional[str] = None
+    brand_preset: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_secondary_color: Optional[str] = None
+    brand_accent_color: Optional[str] = None
+    brand_logo_data_url: Optional[str] = None
 
 
 class StationCreate(BaseModel):
@@ -260,3 +277,8 @@ class StationDashboardOut(BaseModel):
     last_poll_success: Optional[bool] = None
     last_poll_error: Optional[str] = None
     last_sync_at: Optional[datetime] = None   # cloud sync freshness — separate signal, see design doc
+    brand_preset: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_secondary_color: Optional[str] = None
+    brand_accent_color: Optional[str] = None
+    brand_logo_data_url: Optional[str] = None
