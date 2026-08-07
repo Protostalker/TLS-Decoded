@@ -95,11 +95,11 @@ export default function Dashboard() {
     : '—'
 
   return (
-    <div style={{ minHeight:'100vh', background:'#0f1117', color:'#e2e8f0' }}>
+    <div style={{ minHeight:'100vh', background:'var(--brand-bg, #0f1117)', color:'var(--brand-text, #e2e8f0)' }}>
 
       {/* Top bar */}
       <header style={{
-        background:'#161b27', borderBottom:'1px solid #1e2130',
+        background:'var(--brand-surface-2, #161b27)', borderBottom:'1px solid var(--brand-surface, #1e2130)',
         padding:'0 24px', height:60,
         display:'flex', alignItems:'center', justifyContent:'space-between',
       }}>
@@ -109,13 +109,13 @@ export default function Dashboard() {
             <div style={{ fontWeight:800, fontSize:16, letterSpacing:-0.3 }}>
               {data?.station_name ?? 'TLS-Decoded'}
             </div>
-            <div style={{ fontSize:10, color:'#475569' }}>Fuel Tank Monitor</div>
+            <div style={{ fontSize:10, color:'var(--brand-text-faint, #475569)' }}>Fuel Tank Monitor</div>
           </div>
         </div>
 
         <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-          <div style={{ fontSize:11, color:'#475569' }}>
-            Last poll: <span style={{ color:'#64748b' }}>{lastPoll}</span>
+          <div style={{ fontSize:11, color:'var(--brand-text-faint, #475569)' }}>
+            Last poll: <span style={{ color:'var(--brand-text-dimmer, #64748b)' }}>{lastPoll}</span>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:6 }}>
             <div style={{
@@ -123,14 +123,14 @@ export default function Dashboard() {
               background: error ? '#ef4444' : '#22c55e',
               boxShadow: error ? '0 0 5px #ef444488' : '0 0 5px #22c55e88',
             }} />
-            <span style={{ fontSize:11, color:'#475569' }}>{error ? 'Error' : 'Live'}</span>
+            <span style={{ fontSize:11, color:'var(--brand-text-faint, #475569)' }}>{error ? 'Error' : 'Live'}</span>
           </div>
           <button
             onClick={() => setSettingsOpen(true)}
             title="Settings"
             style={{
-              background:'#1e2130', border:'1px solid #2d3348', borderRadius:8,
-              width:32, height:32, cursor:'pointer', color:'#94a3b8', fontSize:15,
+              background:'var(--brand-surface, #1e2130)', border:'1px solid var(--brand-border, #2d3348)', borderRadius:8,
+              width:32, height:32, cursor:'pointer', color:'var(--brand-text-dim, #94a3b8)', fontSize:15,
               display:'flex', alignItems:'center', justifyContent:'center',
             }}
           >⚙</button>
@@ -142,7 +142,7 @@ export default function Dashboard() {
       <main style={{ padding: isMobile ? '16px 12px' : '24px', maxWidth:1400, margin:'0 auto' }}>
 
         {loading && (
-          <div style={{ textAlign:'center', padding:80, color:'#475569', fontSize:16 }}>
+          <div style={{ textAlign:'center', padding:80, color:'var(--brand-text-faint, #475569)', fontSize:16 }}>
             Connecting to tank gauge…
           </div>
         )}
@@ -167,7 +167,7 @@ export default function Dashboard() {
             <div style={{ fontFamily:'monospace', marginTop:6, wordBreak:'break-word', color:'#fecaca' }}>
               {data.last_poll_error || 'No error message recorded.'}
             </div>
-            <div style={{ marginTop:8, fontSize:11, color:'#94a3b8' }}>
+            <div style={{ marginTop:8, fontSize:11, color:'var(--brand-text-dim, #94a3b8)' }}>
               Full history in Settings (⚙) → Poll log.
             </div>
           </div>
@@ -186,7 +186,7 @@ export default function Dashboard() {
                     return (
                       <div key={tank.id} onClick={() => setSelected(tank.id)} style={{
                         cursor:'pointer',
-                        outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
+                        outline: isSelected ? '2px solid var(--brand-primary, var(--brand-primary, #3b82f6))' : '2px solid transparent',
                         outlineOffset:3, borderRadius:18, transition:'outline 0.15s',
                       }}>
                         <TankGauge tank={tank} />
@@ -215,7 +215,7 @@ export default function Dashboard() {
                     return (
                       <div key={tank.id} onClick={() => setSelected(tank.id)} style={{
                         cursor:'pointer', display:'flex', flexDirection:'column', gap:10,
-                        outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
+                        outline: isSelected ? '2px solid var(--brand-primary, var(--brand-primary, #3b82f6))' : '2px solid transparent',
                         outlineOffset:3, borderRadius:14, transition:'outline 0.15s',
                         flexShrink:0, scrollSnapAlign:'center',
                       }}>

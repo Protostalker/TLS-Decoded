@@ -4,7 +4,7 @@ import { api } from '../api/client.js'
 
 const btn = {
   padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-  border: '1px solid #374151', background: 'transparent', color: '#cbd5e1',
+  border: '1px solid var(--brand-border-soft, #374151)', background: 'transparent', color: 'var(--brand-text, #cbd5e1)',
 }
 
 function nowLocalInputValue() {
@@ -36,12 +36,12 @@ function EditTotal({ event, onSaved, onCancel }) {
       <input
         type="number" min={0} value={value} onChange={e => setValue(e.target.value)}
         style={{
-          background: '#111827', border: '1px solid #374151', borderRadius: 6,
-          color: '#e2e8f0', fontSize: 12, padding: '5px 8px', width: 100,
+          background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6,
+          color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '5px 8px', width: 100,
         }}
       />
-      <span style={{ fontSize: 11, color: '#64748b' }}>gal</span>
-      <button style={{ ...btn, background: '#3b82f6', border: 'none', color: '#fff' }} disabled={saving} onClick={save}>
+      <span style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>gal</span>
+      <button style={{ ...btn, background: 'var(--brand-primary, #3b82f6)', border: 'none', color: '#fff' }} disabled={saving} onClick={save}>
         Confirm
       </button>
       <button style={btn} onClick={onCancel}>Cancel</button>
@@ -74,30 +74,30 @@ function LogDeliveryForm({ tank, onSaved, onCancel }) {
 
   return (
     <div style={{
-      background: '#111827', border: '1px solid #2d3348', borderRadius: 8,
+      background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
       padding: '10px 12px', marginBottom: 10,
     }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Gallons</div>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Gallons</div>
           <input type="number" min={1} value={gallons} onChange={e => setGallons(e.target.value)}
             placeholder="e.g. 6015"
-            style={{ background: '#0b0f19', border: '1px solid #374151', borderRadius: 6, color: '#e2e8f0', fontSize: 12, padding: '6px 8px', width: 110 }} />
+            style={{ background: 'var(--brand-surface-2, #0b0f19)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6, color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '6px 8px', width: 110 }} />
         </div>
         <div>
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>When</div>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>When</div>
           <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)}
-            style={{ background: '#0b0f19', border: '1px solid #374151', borderRadius: 6, color: '#e2e8f0', fontSize: 12, padding: '6px 8px' }} />
+            style={{ background: 'var(--brand-surface-2, #0b0f19)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6, color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '6px 8px' }} />
         </div>
         <div style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Note (optional)</div>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Note (optional)</div>
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
             placeholder="e.g. driver ticket #123"
-            style={{ background: '#0b0f19', border: '1px solid #374151', borderRadius: 6, color: '#e2e8f0', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box' }} />
+            style={{ background: 'var(--brand-surface-2, #0b0f19)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6, color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box' }} />
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button style={{ ...btn, background: '#3b82f6', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
+        <button style={{ ...btn, background: 'var(--brand-primary, #3b82f6)', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
           Save delivery
         </button>
         <button style={btn} onClick={onCancel}>Cancel</button>
@@ -133,11 +133,11 @@ export default function DeliveryPanel({ tank }) {
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 12,
-      padding: '18px 16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12,
+      padding: '18px 16px', border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: '#e2e8f0' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand-text, #e2e8f0)' }}>
           {tank.name} — Recent Fuel Deliveries
         </div>
         <button style={btn} onClick={() => setShowLogForm(v => !v)}>
@@ -153,10 +153,10 @@ export default function DeliveryPanel({ tank }) {
         />
       )}
 
-      {loading && <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 12 }}>Loading…</div>}
+      {loading && <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 20, fontSize: 12 }}>Loading…</div>}
       {error && <div style={{ color: '#ef4444', fontSize: 12, padding: 12 }}>Error: {error}</div>}
       {!loading && !error && events.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 12 }}>
+        <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 20, fontSize: 12 }}>
           No deliveries detected recently — use "+ Log delivery" to report one manually
         </div>
       )}
@@ -181,7 +181,7 @@ export default function DeliveryPanel({ tank }) {
                     <span style={{ color: '#fbbf24', fontWeight: 600, fontSize: 10, marginLeft: 6 }}>unconfirmed</span>
                   )}
                   {e.merged_poll_count > 1 && (
-                    <span style={{ color: '#64748b', fontWeight: 500, fontSize: 10, marginLeft: 6 }}>
+                    <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontWeight: 500, fontSize: 10, marginLeft: 6 }}>
                       · combined from {e.merged_poll_count} polls
                     </span>
                   )}
@@ -191,14 +191,14 @@ export default function DeliveryPanel({ tank }) {
                     net {Math.round(e.gallons_received).toLocaleString()} gal · est. gross {Math.round(e.adjusted_gallons_received).toLocaleString()} gal
                   </div>
                 )}
-                {e.note && <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2, fontStyle: 'italic' }}>{e.note}</div>}
-                <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                {e.note && <div style={{ color: 'var(--brand-text-dim, #94a3b8)', fontSize: 11, marginTop: 2, fontStyle: 'italic' }}>{e.note}</div>}
+                <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 11, marginTop: 2 }}>
                   {format(new Date(e.detected_at), 'MMM d, yyyy · HH:mm')}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                 {e.start_volume_gallons != null && e.end_volume_gallons != null && (
-                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                  <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>
                     {Math.round(e.start_volume_gallons).toLocaleString()} → {Math.round(e.end_volume_gallons).toLocaleString()} gal
                   </div>
                 )}

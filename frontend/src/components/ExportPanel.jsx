@@ -17,8 +17,8 @@ function download(url) {
 
 const btnStyle = {
   padding: '7px 14px', borderRadius: 7, cursor: 'pointer',
-  border: '1px solid #2d3348', fontSize: 12, fontWeight: 600,
-  background: '#2d3348', color: '#cbd5e1',
+  border: '1px solid var(--brand-border, #2d3348)', fontSize: 12, fontWeight: 600,
+  background: 'var(--brand-border, #2d3348)', color: 'var(--brand-text, #cbd5e1)',
 }
 
 export default function ExportPanel({ tank }) {
@@ -28,11 +28,11 @@ export default function ExportPanel({ tank }) {
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 12,
-      padding: '16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12,
+      padding: '16px', border: '1.5px solid var(--brand-border, #2d3348)',
       display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#e2e8f0', marginRight: 4 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--brand-text, #e2e8f0)', marginRight: 4 }}>
         Export monthly readings
       </div>
 
@@ -41,8 +41,8 @@ export default function ExportPanel({ tank }) {
         value={month}
         onChange={e => setMonth(e.target.value)}
         style={{
-          background: '#111827', border: '1px solid #374151', borderRadius: 6,
-          color: '#e2e8f0', fontSize: 12, padding: '6px 10px',
+          background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6,
+          color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '6px 10px',
         }}
       />
 

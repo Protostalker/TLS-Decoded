@@ -17,17 +17,17 @@ function nextSlotsPreview(intervalMinutes) {
 }
 
 const row = { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }
-const label = { fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }
-const hint = { fontSize: 11, color: '#64748b' }
+const label = { fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', textTransform: 'uppercase', letterSpacing: 0.4 }
+const hint = { fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }
 const inputStyle = {
-  background: '#111827', border: '1px solid #374151', borderRadius: 7,
-  color: '#e2e8f0', fontSize: 13, padding: '8px 10px', width: '100%', boxSizing: 'border-box',
+  background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 7,
+  color: 'var(--brand-text, #e2e8f0)', fontSize: 13, padding: '8px 10px', width: '100%', boxSizing: 'border-box',
 }
 const btn = (primary) => ({
   padding: '8px 16px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 700,
-  border: primary ? 'none' : '1px solid #374151',
-  background: primary ? '#3b82f6' : 'transparent',
-  color: primary ? '#fff' : '#cbd5e1',
+  border: primary ? 'none' : '1px solid var(--brand-border-soft, #374151)',
+  background: primary ? 'var(--brand-primary, #3b82f6)' : 'transparent',
+  color: primary ? '#fff' : 'var(--brand-text, #cbd5e1)',
 })
 
 function TankEditor({ tank, onSaved }) {
@@ -56,18 +56,18 @@ function TankEditor({ tank, onSaved }) {
 
   return (
     <div style={{
-      background: '#111827', border: '1px solid #2d3348', borderRadius: 8,
+      background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
       padding: '10px 12px', marginBottom: 8,
     }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>{tank.name}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text, #cbd5e1)', marginBottom: 6 }}>{tank.name}</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Capacity (gal)</div>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Capacity (gal)</div>
           <input type="number" min={1} value={capacity} onChange={e => setCapacity(e.target.value)}
             style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Reorder at (gal)</div>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Reorder at (gal)</div>
           <input type="number" min={0} value={reorder} onChange={e => setReorder(e.target.value)}
             style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
         </div>
@@ -103,9 +103,9 @@ export default function SettingsPanel({ open, onClose }) {
 
   // Branding — theme colors + logo for this station's dashboard.
   const [brandPreset, setBrandPreset] = useState('default')
-  const [brandPrimary, setBrandPrimary] = useState('#3b82f6')
-  const [brandSecondary, setBrandSecondary] = useState('#6366f1')
-  const [brandAccent, setBrandAccent] = useState('#3b82f6')
+  const [brandPrimary, setBrandPrimary] = useState('var(--brand-primary, #3b82f6)')
+  const [brandSecondary, setBrandSecondary] = useState('var(--brand-secondary, #6366f1)')
+  const [brandAccent, setBrandAccent] = useState('var(--brand-primary, #3b82f6)')
   const [brandLogo, setBrandLogo] = useState('')
   const [logoError, setLogoError] = useState(null)
 
@@ -232,18 +232,18 @@ export default function SettingsPanel({ open, onClose }) {
         onClick={e => e.stopPropagation()}
         style={{
           width: 'min(420px, 100vw)', height: '100vh', overflowY: 'auto',
-          background: '#161b27', borderLeft: '1px solid #2d3348',
+          background: 'var(--brand-surface-2, #161b27)', borderLeft: '1px solid var(--brand-border, #2d3348)',
           padding: '24px 22px', boxSizing: 'border-box',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ fontWeight: 800, fontSize: 17, color: '#e2e8f0' }}>Settings</div>
+          <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--brand-text, #e2e8f0)' }}>Settings</div>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#64748b', fontSize: 20, cursor: 'pointer',
+            background: 'none', border: 'none', color: 'var(--brand-text-dimmer, #64748b)', fontSize: 20, cursor: 'pointer',
           }}>×</button>
         </div>
 
-        {!settings && <div style={{ color: '#64748b', fontSize: 12 }}>Loading…</div>}
+        {!settings && <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 12 }}>Loading…</div>}
 
         {settings && (
           <>
@@ -266,7 +266,7 @@ export default function SettingsPanel({ open, onClose }) {
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #2d3348', margin: '4px 0 20px' }} />
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
 
             {/* Poll interval */}
             <div style={row}>
@@ -326,7 +326,7 @@ export default function SettingsPanel({ open, onClose }) {
               <PollLogPanel />
             </div>
 
-            <div style={{ borderTop: '1px solid #2d3348', margin: '4px 0 20px' }} />
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
 
             {/* Device ID / cloud */}
             <div style={row}>
@@ -370,7 +370,7 @@ export default function SettingsPanel({ open, onClose }) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Cloud URL</div>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Cloud URL</div>
                 <input
                   value={cloudSyncUrl}
                   onChange={e => setCloudSyncUrl(e.target.value)}
@@ -380,7 +380,7 @@ export default function SettingsPanel({ open, onClose }) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Device ID</div>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Device ID</div>
                 <input
                   value={cloudSyncDeviceId}
                   onChange={e => setCloudSyncDeviceId(e.target.value)}
@@ -390,7 +390,7 @@ export default function SettingsPanel({ open, onClose }) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Device secret</div>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Device secret</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type={showSecret ? 'text' : 'password'}
@@ -405,7 +405,7 @@ export default function SettingsPanel({ open, onClose }) {
               </div>
 
               <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Sync interval (minutes)</div>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Sync interval (minutes)</div>
                 <input
                   type="number" min={1} max={1440}
                   value={cloudSyncInterval}
@@ -428,19 +428,19 @@ export default function SettingsPanel({ open, onClose }) {
               }}>
                 <span style={{
                   width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
-                  background: settings.cloud_sync_last_synced_at ? '#22c55e' : '#475569',
+                  background: settings.cloud_sync_last_synced_at ? '#22c55e' : 'var(--brand-text-faint, #475569)',
                 }} />
                 {settings.cloud_sync_last_synced_at
-                  ? <span style={{ color: '#94a3b8' }}>
+                  ? <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }}>
                       Last synced to cloud {formatDistanceToNow(parseISO(settings.cloud_sync_last_synced_at), { addSuffix: true })}
                     </span>
-                  : <span style={{ color: '#64748b' }}>
+                  : <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>
                       {cloudSyncEnabled ? 'Not synced yet — first push happens within ~15s of saving.' : 'Never synced.'}
                     </span>}
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #2d3348', margin: '4px 0 20px' }} />
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
 
             {/* Branding */}
             <div style={row}>
@@ -452,7 +452,7 @@ export default function SettingsPanel({ open, onClose }) {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0' }}>
                 <BrandLogo logoDataUrl={brandLogo} size={40} />
-                <div style={{ fontSize: 11, color: '#64748b' }}>Preview</div>
+                <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>Preview</div>
               </div>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
@@ -463,9 +463,9 @@ export default function SettingsPanel({ open, onClose }) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px',
                       borderRadius: 7, cursor: 'pointer', fontSize: 11,
-                      border: brandPreset === p.id ? '1.5px solid #3b82f6' : '1px solid #374151',
-                      background: brandPreset === p.id ? '#0f1c33' : 'transparent',
-                      color: '#cbd5e1',
+                      border: brandPreset === p.id ? '1.5px solid var(--brand-primary, #3b82f6)' : '1px solid var(--brand-border-soft, #374151)',
+                      background: brandPreset === p.id ? 'var(--brand-primary-soft, #0f1c33)' : 'transparent',
+                      color: 'var(--brand-text, #cbd5e1)',
                     }}
                   >
                     <span style={{ display: 'flex' }}>
@@ -483,28 +483,28 @@ export default function SettingsPanel({ open, onClose }) {
 
               <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Primary</div>
+                  <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Primary</div>
                   <input type="color" value={brandPrimary}
                     onChange={e => { setBrandPrimary(e.target.value); setBrandPreset('custom') }}
-                    style={{ width: '100%', height: 32, border: '1px solid #374151', borderRadius: 6, background: 'transparent' }} />
+                    style={{ width: '100%', height: 32, border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6, background: 'transparent' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Secondary</div>
+                  <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Secondary</div>
                   <input type="color" value={brandSecondary}
                     onChange={e => { setBrandSecondary(e.target.value); setBrandPreset('custom') }}
-                    style={{ width: '100%', height: 32, border: '1px solid #374151', borderRadius: 6, background: 'transparent' }} />
+                    style={{ width: '100%', height: 32, border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6, background: 'transparent' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Accent</div>
+                  <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Accent</div>
                   <input type="color" value={brandAccent}
                     onChange={e => { setBrandAccent(e.target.value); setBrandPreset('custom') }}
-                    style={{ width: '100%', height: 32, border: '1px solid #374151', borderRadius: 6, background: 'transparent' }} />
+                    style={{ width: '100%', height: 32, border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6, background: 'transparent' }} />
                 </div>
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3 }}>Custom logo (optional)</div>
-                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ fontSize: 11, color: '#94a3b8' }} />
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Custom logo (optional)</div>
+                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ fontSize: 11, color: 'var(--brand-text-dim, #94a3b8)' }} />
                 {brandLogo && (
                   <button style={{ ...btn(false), marginLeft: 8, padding: '4px 8px', fontSize: 10 }}
                     onClick={() => setBrandLogo('')}>

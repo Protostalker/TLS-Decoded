@@ -9,9 +9,9 @@ const CONFIDENCE_COLORS = {
 
 function StatRow({ label, value, accent }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #2d3348' }}>
-      <span style={{ color: '#64748b', fontSize: 12 }}>{label}</span>
-      <span style={{ color: accent || '#e2e8f0', fontWeight: 600, fontSize: 13 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid var(--brand-border, #2d3348)' }}>
+      <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 12 }}>{label}</span>
+      <span style={{ color: accent || 'var(--brand-text, #e2e8f0)', fontWeight: 600, fontSize: 13 }}>
         {value ?? '—'}
       </span>
     </div>
@@ -41,16 +41,16 @@ export default function PredictionCard({ prediction }) {
 
   return (
     <div style={{
-      background: '#1a1f2e',
+      background: 'var(--brand-surface, #1a1f2e)',
       borderRadius: 10,
       padding: '14px 16px',
-      border: '1.5px solid #2d3348',
+      border: '1.5px solid var(--brand-border, #2d3348)',
       minWidth: 200,
       flex: 1,
     }}>
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontWeight: 700, color: '#94a3b8', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <span style={{ fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Forecast
         </span>
         <span style={{
@@ -63,15 +63,15 @@ export default function PredictionCard({ prediction }) {
       </div>
 
       {prediction.note ? (
-        <div style={{ color: '#64748b', fontSize: 12, padding: '8px 0' }}>{prediction.note}</div>
+        <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 12, padding: '8px 0' }}>{prediction.note}</div>
       ) : (
         <>
           {/* Prominent: days until reorder */}
           <div style={{ textAlign: 'center', padding: '10px 0 8px' }}>
-            <div style={{ fontSize: 36, fontWeight: 800, color: daysReorder ? '#f59e0b' : '#64748b', lineHeight: 1 }}>
+            <div style={{ fontSize: 36, fontWeight: 800, color: daysReorder ? '#f59e0b' : 'var(--brand-text-dimmer, #64748b)', lineHeight: 1 }}>
               {prediction.days_until_reorder != null ? Math.floor(prediction.days_until_reorder) : '—'}
             </div>
-            <div style={{ color: '#64748b', fontSize: 11, marginTop: 4 }}>days until reorder</div>
+            <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 11, marginTop: 4 }}>days until reorder</div>
           </div>
 
           <StatRow label="Days until empty" value={daysEmpty} />

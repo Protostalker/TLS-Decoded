@@ -29,16 +29,16 @@ function shortDate(iso) {
 function Tile({ label, value, sub, accent, sub2 }) {
   return (
     <div style={{
-      background: '#111827', border: '1px solid #2d3348', borderRadius: 10,
+      background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 10,
       padding: '12px 14px', flex: '1 1 130px', minWidth: 130,
     }}>
-      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+      <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
         {label}
       </div>
-      <div style={{ fontSize: 20, fontWeight: 800, color: accent || '#e2e8f0' }}>
+      <div style={{ fontSize: 20, fontWeight: 800, color: accent || 'var(--brand-text, #e2e8f0)' }}>
         {value ?? '—'}
       </div>
-      {sub  && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{sub}</div>}
+      {sub  && <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 2 }}>{sub}</div>}
       {sub2 && <div style={{ fontSize: 10, color: '#22c55e', marginTop: 1 }}>{sub2}</div>}
     </div>
   )
@@ -50,14 +50,14 @@ const CustomTooltip = ({ active, payload, label }) => {
   const margin = payload.find(p => p.dataKey === 'margin_dollars')
   return (
     <div style={{
-      background: '#1e2130', border: '1px solid #2d3348', borderRadius: 8,
-      padding: '8px 12px', fontSize: 12, color: '#e2e8f0',
+      background: 'var(--brand-surface, #1e2130)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
+      padding: '8px 12px', fontSize: 12, color: 'var(--brand-text, #e2e8f0)',
     }}>
       <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
       {gal    && <div style={{ color: '#60a5fa' }}>{gal.value.toLocaleString()} gal consumed</div>}
       {margin && margin.value != null
         ? <div style={{ color: '#22c55e' }}>{fmt$(margin.value)} margin</div>
-        : <div style={{ color: '#64748b' }}>no price set</div>
+        : <div style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>no price set</div>
       }
     </div>
   )
@@ -69,10 +69,10 @@ function DailyMarginChart({ data, window }) {
 
   return (
     <div style={{
-      background: '#111827', border: '1px solid #2d3348', borderRadius: 10,
+      background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 10,
       padding: '14px 10px 8px', marginTop: 2,
     }}>
-      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10, paddingLeft: 4 }}>
+      <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 10, paddingLeft: 4 }}>
         Daily consumption &amp; margin — {window}
         {!hasMargin && (
           <span style={{ color: '#f59e0b', marginLeft: 8 }}>⚠ no price set</span>
@@ -80,11 +80,11 @@ function DailyMarginChart({ data, window }) {
       </div>
       <ResponsiveContainer width="100%" height={160}>
         <ComposedChart data={data} margin={{ top: 0, right: 10, left: -10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--brand-border-soft, #1f2937)" vertical={false} />
           <XAxis
             dataKey="date"
             tickFormatter={shortDate}
-            tick={{ fontSize: 10, fill: '#64748b' }}
+            tick={{ fontSize: 10, fill: 'var(--brand-text-dimmer, #64748b)' }}
             axisLine={false}
             tickLine={false}
           />
@@ -161,10 +161,10 @@ export default function StatsPanel({ tank }) {
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 12,
-      padding: '18px 16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12,
+      padding: '18px 16px', border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 15, color: '#e2e8f0', marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand-text, #e2e8f0)', marginBottom: 12 }}>
         {tank.name} — Stats
       </div>
 
@@ -230,9 +230,9 @@ export default function StatsPanel({ tank }) {
                     onClick={() => setChartWindow(w)}
                     style={{
                       fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                      border: '1px solid #2d3348',
-                      background: chartWindow === w ? '#1d4ed8' : '#111827',
-                      color: chartWindow === w ? '#fff' : '#64748b',
+                      border: '1px solid var(--brand-border, #2d3348)',
+                      background: chartWindow === w ? '#1d4ed8' : 'var(--brand-well, #111827)',
+                      color: chartWindow === w ? '#fff' : 'var(--brand-text-dimmer, #64748b)',
                     }}
                   >
                     {w}

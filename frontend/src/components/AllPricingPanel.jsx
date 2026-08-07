@@ -4,7 +4,7 @@ import { PriceForm, money } from './PricingPanel.jsx'
 
 const btn = {
   padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-  border: '1px solid #374151', background: 'transparent', color: '#cbd5e1',
+  border: '1px solid var(--brand-border-soft, #374151)', background: 'transparent', color: 'var(--brand-text, #cbd5e1)',
 }
 
 // Single place to see and update every product's price at once — the
@@ -32,14 +32,14 @@ export default function AllPricingPanel({ tanks }) {
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 12,
-      padding: '18px 16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12,
+      padding: '18px 16px', border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 15, color: '#e2e8f0', marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand-text, #e2e8f0)', marginBottom: 12 }}>
         Pricing — all products
       </div>
 
-      {loading && <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 12 }}>Loading…</div>}
+      {loading && <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 20, fontSize: 12 }}>Loading…</div>}
 
       {!loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -47,13 +47,13 @@ export default function AllPricingPanel({ tanks }) {
             const p = prices[tank.id]
             return (
               <div key={tank.id} style={{
-                background: '#111827', border: '1px solid #2d3348', borderRadius: 8,
+                background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
                 padding: '10px 12px',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, minWidth: 100 }}>{tank.name}</div>
                   {p ? (
-                    <div style={{ fontSize: 12, color: '#cbd5e1', flex: 1 }}>
+                    <div style={{ fontSize: 12, color: 'var(--brand-text, #cbd5e1)', flex: 1 }}>
                       cost {money(p.cost_per_gallon, 4)} · sale {money(p.sale_price_per_gallon, 4)}
                       {' · '}
                       <span style={{ color: p.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
@@ -61,7 +61,7 @@ export default function AllPricingPanel({ tanks }) {
                       </span>
                     </div>
                   ) : (
-                    <div style={{ fontSize: 12, color: '#64748b', flex: 1 }}>No pricing set yet</div>
+                    <div style={{ fontSize: 12, color: 'var(--brand-text-dimmer, #64748b)', flex: 1 }}>No pricing set yet</div>
                   )}
                   <button style={btn} onClick={() => setEditingTankId(editingTankId === tank.id ? null : tank.id)}>
                     {editingTankId === tank.id ? '× Cancel' : (p ? 'Update' : '+ Set price')}

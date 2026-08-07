@@ -9,7 +9,7 @@ const SEVERITY = {
 }
 
 function AlarmRow({ alarm, tankName }) {
-  const sev = SEVERITY[alarm.category_code] ?? { color: '#94a3b8', bg: '#1e2130', label: 'Unknown' }
+  const sev = SEVERITY[alarm.category_code] ?? { color: 'var(--brand-text-dim, #94a3b8)', bg: 'var(--brand-surface, #1e2130)', label: 'Unknown' }
   const time = alarm.detected_at ? format(parseISO(alarm.detected_at), 'MMM d HH:mm') : '—'
 
   return (
@@ -30,7 +30,7 @@ function AlarmRow({ alarm, tankName }) {
         <div style={{ color: sev.color, fontWeight: 700, fontSize: 13 }}>
           {alarm.description ?? `Alarm ${alarm.alarm_code}`}
         </div>
-        <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+        <div style={{ color: 'var(--brand-text-dimmer, #64748b)', fontSize: 11, marginTop: 2 }}>
           {tankName ? `Tank: ${tankName}` : alarm.tank_id ? `Tank ${alarm.tank_id}` : 'System'}
           {' · '}
           {time}
@@ -71,8 +71,8 @@ export default function AlarmPanel({ alarms, tanks }) {
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 10,
-      padding: '14px 16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 10,
+      padding: '14px 16px', border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
       <div style={{ fontWeight: 700, color: '#ef4444', fontSize: 14, marginBottom: 12 }}>
         ⚠ Active Alarms ({alarms.length})

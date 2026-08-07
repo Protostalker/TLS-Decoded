@@ -16,10 +16,10 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
     <div style={{
-      background: '#1e2130', border: '1px solid #374151',
+      background: 'var(--brand-surface, #1e2130)', border: '1px solid var(--brand-border-soft, #374151)',
       borderRadius: 8, padding: '10px 14px', fontSize: 12,
     }}>
-      <div style={{ color: '#94a3b8', marginBottom: 6 }}>{label}</div>
+      <div style={{ color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 6 }}>{label}</div>
       {payload.map(p => (
         <div key={p.dataKey} style={{ color: p.color }}>
           {p.name}: {typeof p.value === 'number'
@@ -65,11 +65,11 @@ export default function FuelChart({ tank }) {
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 12,
-      padding: '20px 16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12,
+      padding: '20px 16px', border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-        <div style={{ fontWeight:700, fontSize:15, color:'#e2e8f0' }}>
+        <div style={{ fontWeight:700, fontSize:15, color:'var(--brand-text, #e2e8f0)' }}>
           {tank.name} — Volume History
         </div>
         <div style={{ display:'flex', gap:6 }}>
@@ -77,8 +77,8 @@ export default function FuelChart({ tank }) {
             <button key={r.label} onClick={() => setRangeIdx(i)} style={{
               padding: '4px 12px', borderRadius: 6, cursor: 'pointer',
               border: 'none', fontSize: 12, fontWeight: 600,
-              background: i === rangeIdx ? '#3b82f6' : '#2d3348',
-              color: i === rangeIdx ? '#fff' : '#94a3b8',
+              background: i === rangeIdx ? 'var(--brand-primary, #3b82f6)' : 'var(--brand-border, #2d3348)',
+              color: i === rangeIdx ? '#fff' : 'var(--brand-text-dim, #94a3b8)',
             }}>
               {r.label}
             </button>
@@ -86,10 +86,10 @@ export default function FuelChart({ tank }) {
         </div>
       </div>
 
-      {loading && <div style={{ textAlign:'center', color:'#64748b', padding:40 }}>Loading…</div>}
+      {loading && <div style={{ textAlign:'center', color:'var(--brand-text-dimmer, #64748b)', padding:40 }}>Loading…</div>}
       {error   && <div style={{ color:'#ef4444', fontSize:12, padding:16 }}>Error: {error}</div>}
       {!loading && !error && data.length === 0 && (
-        <div style={{ textAlign:'center', color:'#64748b', padding:40 }}>No data for this period</div>
+        <div style={{ textAlign:'center', color:'var(--brand-text-dimmer, #64748b)', padding:40 }}>No data for this period</div>
       )}
 
       {!loading && data.length > 0 && (
@@ -97,19 +97,19 @@ export default function FuelChart({ tank }) {
           <ComposedChart data={data} margin={{ top:4, right:10, left:0, bottom:4 }}>
             <defs>
               <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.18} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop offset="5%"  stopColor="var(--brand-primary, #3b82f6)" stopOpacity={0.18} />
+                <stop offset="95%" stopColor="var(--brand-primary, #3b82f6)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2d3348" />
-            <XAxis dataKey="time" tick={{ fill:'#64748b', fontSize:10 }}
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--brand-border, #2d3348)" />
+            <XAxis dataKey="time" tick={{ fill:'var(--brand-text-dimmer, #64748b)', fontSize:10 }}
               tickLine={false} interval="preserveStartEnd" />
-            <YAxis tick={{ fill:'#64748b', fontSize:10 }} tickLine={false}
+            <YAxis tick={{ fill:'var(--brand-text-dimmer, #64748b)', fontSize:10 }} tickLine={false}
               axisLine={false} tickFormatter={v => v.toLocaleString()} width={62} />
             <Tooltip content={<CustomTooltip />} />
             <Area type="monotone" dataKey="volume" stroke="none"
               fill="url(#volGrad)" name="Volume" />
-            <Line type="monotone" dataKey="volume" stroke="#3b82f6"
+            <Line type="monotone" dataKey="volume" stroke="var(--brand-primary, #3b82f6)"
               strokeWidth={2} dot={false} activeDot={{ r:4 }} name="Volume" />
             {reorder && (
               <ReferenceLine y={reorder} stroke="#ef4444" strokeDasharray="6 3"

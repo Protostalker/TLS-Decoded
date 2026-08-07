@@ -4,13 +4,13 @@ import { api } from '../api/client.js'
 
 const btn = {
   padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-  border: '1px solid #374151', background: 'transparent', color: '#cbd5e1',
+  border: '1px solid var(--brand-border-soft, #374151)', background: 'transparent', color: 'var(--brand-text, #cbd5e1)',
 }
 const inputStyle = {
-  background: '#0b0f19', border: '1px solid #374151', borderRadius: 6,
-  color: '#e2e8f0', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box',
+  background: 'var(--brand-surface-2, #0b0f19)', border: '1px solid var(--brand-border-soft, #374151)', borderRadius: 6,
+  color: 'var(--brand-text, #e2e8f0)', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box',
 }
-const fieldLabel = { fontSize: 10, color: '#64748b', marginBottom: 3 }
+const fieldLabel = { fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }
 
 export function money(n, digits = 3) {
   return n == null ? '—' : `$${Number(n).toFixed(digits)}`
@@ -30,14 +30,14 @@ function nowLocalInputValue() {
 function Tile({ label, value, accent, sub }) {
   return (
     <div style={{
-      background: '#111827', border: '1px solid #2d3348', borderRadius: 10,
+      background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 10,
       padding: '12px 14px', flex: '1 1 110px', minWidth: 110,
     }}>
-      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+      <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
         {label}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: accent || '#e2e8f0' }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{sub}</div>}
+      <div style={{ fontSize: 18, fontWeight: 800, color: accent || 'var(--brand-text, #e2e8f0)' }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 2 }}>{sub}</div>}
     </div>
   )
 }
@@ -79,7 +79,7 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
 
   return (
     <div style={{
-      background: '#111827', border: '1px solid #2d3348', borderRadius: 8,
+      background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
       padding: '10px 12px', marginBottom: 10,
     }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -92,7 +92,7 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
           <div style={fieldLabel}>Tax rate (%)</div>
           <input type="number" step="0.0001" min={0} value={taxRate} onChange={e => setTaxRate(e.target.value)}
             placeholder="e.g. 9.75" style={inputStyle} />
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 3 }}>
             {taxDollars != null ? `≈ $${taxDollars.toFixed(6)}/gal` : 'leave blank for $0 tax'}
           </div>
         </div>
@@ -104,7 +104,7 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
         <div style={{ width: 190 }}>
           <div style={fieldLabel}>Effective from</div>
           <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} style={inputStyle} />
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 3 }}>
             pick a past date to backdate (catching up on missed entries)
           </div>
         </div>
@@ -115,7 +115,7 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button style={{ ...btn, background: '#3b82f6', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
+        <button style={{ ...btn, background: 'var(--brand-primary, #3b82f6)', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
           {initial ? 'Save changes' : 'Save price'}
         </button>
         <button style={btn} onClick={onCancel}>Cancel</button>
@@ -158,16 +158,16 @@ export default function PricingPanel({ tank }) {
   if (!tank) return null
 
   const marginColor = current
-    ? (current.margin_per_gallon > 0 ? '#86efac' : current.margin_per_gallon < 0 ? '#fca5a5' : '#94a3b8')
+    ? (current.margin_per_gallon > 0 ? '#86efac' : current.margin_per_gallon < 0 ? '#fca5a5' : 'var(--brand-text-dim, #94a3b8)')
     : undefined
 
   return (
     <div style={{
-      background: '#1e2130', borderRadius: 12,
-      padding: '18px 16px', border: '1.5px solid #2d3348',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12,
+      padding: '18px 16px', border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: '#e2e8f0' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand-text, #e2e8f0)' }}>
           {tank.name} — Pricing &amp; Margin
         </div>
         <button style={btn} onClick={() => setShowAddForm(v => !v)}>
@@ -179,11 +179,11 @@ export default function PricingPanel({ tank }) {
         <PriceForm tank={tank} onCancel={() => setShowAddForm(false)} onDone={() => { setShowAddForm(false); load() }} />
       )}
 
-      {loading && <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 12 }}>Loading…</div>}
+      {loading && <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 20, fontSize: 12 }}>Loading…</div>}
       {error && <div style={{ color: '#ef4444', fontSize: 12, padding: 12 }}>Error: {error}</div>}
 
       {!loading && !error && !current && !showAddForm && (
-        <div style={{ textAlign: 'center', color: '#64748b', padding: 20, fontSize: 12 }}>
+        <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 20, fontSize: 12 }}>
           No pricing set yet — use "+ Update price" to enter cost, taxes/fees, and sale price
         </div>
       )}
@@ -191,11 +191,11 @@ export default function PricingPanel({ tank }) {
       {current && todayGallons != null && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-          background: '#111827', border: '1px solid #2d3348', borderRadius: 10,
+          background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 10,
           padding: '12px 14px', marginBottom: 12,
         }}>
           <div>
-            <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
               Today's profit (live)
             </div>
             <div style={{
@@ -205,7 +205,7 @@ export default function PricingPanel({ tank }) {
               {money(todayGallons * current.margin_per_gallon, 2)}
             </div>
           </div>
-          <div style={{ fontSize: 11, color: '#64748b' }}>
+          <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>
             {todayGallons.toLocaleString(undefined, { maximumFractionDigits: 0 })} gal sold today
             {' × '}
             {money(current.margin_per_gallon, 4)} margin/gal
@@ -235,16 +235,16 @@ export default function PricingPanel({ tank }) {
 
       {history.length > 0 && (
         <div>
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>
             Price history
           </div>
           {history.map(h => (
             <div key={h.id} style={{
-              padding: '8px 10px', background: '#111827', borderRadius: 7,
-              border: '1px solid #2d3348', marginBottom: 6,
+              padding: '8px 10px', background: 'var(--brand-well, #111827)', borderRadius: 7,
+              border: '1px solid var(--brand-border, #2d3348)', marginBottom: 6,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                <div style={{ fontSize: 12, color: '#cbd5e1' }}>
+                <div style={{ fontSize: 12, color: 'var(--brand-text, #cbd5e1)' }}>
                   cost {money(h.cost_per_gallon, 4)} · tax {h.tax_rate_percent != null ? `${h.tax_rate_percent}% (${money(h.tax_fees_per_gallon, 4)})` : money(h.tax_fees_per_gallon, 4)} · sale {money(h.sale_price_per_gallon, 4)}
                   {' · '}
                   <span style={{ color: h.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
@@ -252,7 +252,7 @@ export default function PricingPanel({ tank }) {
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, color: '#64748b' }}>
+                  <span style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)' }}>
                     {format(new Date(h.effective_at), 'MMM d, yyyy HH:mm')}
                   </span>
                   <button style={{ ...btn, padding: '3px 8px' }} onClick={() => setEditingId(editingId === h.id ? null : h.id)}>
@@ -270,7 +270,7 @@ export default function PricingPanel({ tank }) {
                   </button>
                 </div>
               </div>
-              {h.note && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>{h.note}</div>}
+              {h.note && <div style={{ fontSize: 11, color: 'var(--brand-text-dim, #94a3b8)', marginTop: 4, fontStyle: 'italic' }}>{h.note}</div>}
               {editingId === h.id && (
                 <div style={{ marginTop: 8 }}>
                   <PriceForm

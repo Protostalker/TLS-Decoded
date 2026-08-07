@@ -27,7 +27,7 @@ export default function PollLogPanel() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
           Poll log {rows.length > 0 && failCount > 0 && (
             <span style={{ color: '#fca5a5', textTransform: 'none', fontWeight: 600 }}>
               — {failCount} of last {rows.length} failed
@@ -35,19 +35,19 @@ export default function PollLogPanel() {
           )}
         </div>
         <button onClick={load} title="Refresh" style={{
-          background: '#2d3348', border: 'none', borderRadius: 6,
-          color: '#94a3b8', fontSize: 11, padding: '4px 10px', cursor: 'pointer',
+          background: 'var(--brand-border, #2d3348)', border: 'none', borderRadius: 6,
+          color: 'var(--brand-text-dim, #94a3b8)', fontSize: 11, padding: '4px 10px', cursor: 'pointer',
         }}>
           ⟳ Refresh
         </button>
       </div>
 
       {loading && rows.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#64748b', padding: 16, fontSize: 12 }}>Loading…</div>
+        <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 16, fontSize: 12 }}>Loading…</div>
       )}
       {error && <div style={{ color: '#ef4444', fontSize: 12, padding: 12 }}>Error: {error}</div>}
       {!loading && !error && rows.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#64748b', padding: 16, fontSize: 12 }}>No poll attempts logged yet</div>
+        <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 16, fontSize: 12 }}>No poll attempts logged yet</div>
       )}
 
       {rows.length > 0 && (
@@ -55,7 +55,7 @@ export default function PollLogPanel() {
           {rows.map(r => (
             <div key={r.id} style={{
               display: 'flex', alignItems: 'flex-start', gap: 8,
-              padding: '7px 4px', borderBottom: '1px solid #262b3d',
+              padding: '7px 4px', borderBottom: '1px solid var(--brand-border-soft, #262b3d)',
             }}>
               <div style={{
                 width: 8, height: 8, borderRadius: '50%', marginTop: 4, flexShrink: 0,
@@ -64,11 +64,11 @@ export default function PollLogPanel() {
               }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, color: '#cbd5e1' }}>
+                  <span style={{ fontSize: 12, color: 'var(--brand-text, #cbd5e1)' }}>
                     {format(new Date(r.polled_at), 'MMM d, HH:mm:ss')}
                   </span>
                   {r.duration_ms != null && (
-                    <span style={{ fontSize: 10, color: '#475569' }}>{r.duration_ms}ms</span>
+                    <span style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)' }}>{r.duration_ms}ms</span>
                   )}
                 </div>
                 {!r.success && r.error_message && (

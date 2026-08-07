@@ -19,10 +19,10 @@ function CompactSquareGauge({ tank, volume, capacity, ullage, temp, height, pct,
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 8,
-      background: '#1e2130', borderRadius: 18, padding: '16px',
-      border: '1.5px solid #2d3348', width: '100%', boxSizing: 'border-box',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 18, padding: '16px',
+      border: '1.5px solid var(--brand-border, #2d3348)', width: '100%', boxSizing: 'border-box',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#94a3b8' }}>{tank.name}</div>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--brand-text-dim, #94a3b8)' }}>{tank.name}</div>
 
       {/* Rounded-square progress fill */}
       <div style={{
@@ -84,11 +84,11 @@ export default function TankGauge({ tank }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      background: '#1e2130', borderRadius: 12, padding: '16px 12px',
+      background: 'var(--brand-surface, #1e2130)', borderRadius: 12, padding: '16px 12px',
       minWidth: 170, gap: 8,
-      border: '1.5px solid #2d3348',
+      border: '1.5px solid var(--brand-border, #2d3348)',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>
+      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--brand-text-dim, #94a3b8)', textAlign: 'center' }}>
         {tank.name}
       </div>
 
@@ -147,7 +147,7 @@ export default function TankGauge({ tank }) {
       </svg>
 
       {/* Stats row */}
-      <div style={{ display:'flex', gap:12, fontSize:11, color:'#64748b' }}>
+      <div style={{ display:'flex', gap:12, fontSize:11, color:'var(--brand-text-dimmer, #64748b)' }}>
         <span title="Ullage (space remaining)">
           ↑ {ullage.toLocaleString(undefined, {maximumFractionDigits:0})} gal
         </span>
@@ -155,7 +155,7 @@ export default function TankGauge({ tank }) {
       </div>
 
       {height !== null && (
-        <div style={{ fontSize:11, color:'#475569' }}>
+        <div style={{ fontSize:11, color:'var(--brand-text-faint, #475569)' }}>
           {height.toFixed(2)}&Prime; product height
         </div>
       )}
