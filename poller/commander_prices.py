@@ -51,14 +51,17 @@ def _tax_dollars(cost: float, tax_rate_percent: Optional[float]) -> float:
     return round(cost * float(tax_rate_percent) / 100, 6)
 
 
-def _default_tax_rate_percent() -> Optional[float]:
-    raw = os.environ.get("DEFAULT_TAX_RATE_PERCENT")
-    if raw is None or raw.strip() == "":
+def _default_tax_rate_percent(settings: dict) -> Optional[float]:
+    """Settings-table value wins (live-editable from the dashboard, like
+    everything else here) — DEFAULT_TAX_RATE_PERCENT env var is only the
+    first-boot seed, same pattern as commander_reader_url etc."""
+    raw = settings.get("default_tax_rate_percent") or os.environ.get("DEFAULT_TAX_RATE_PERCENT")
+    if raw is None or str(raw).strip() == "":
         return None
     try:
         return float(raw)
     except ValueError:
-        logger.warning("DEFAULT_TAX_RATE_PERCENT=%r is not a number — ignoring", raw)
+        logger.warning("default_tax_rate_percent=%r is not a number — ignoring", raw)
         return None
 
 
@@ -138,6 +141,44 @@ def _record_status(engine: sqlalchemy.Engine, connected: bool, error: Optional[s
             )
 
 
+def _configured(settings: dict) -> Optional[str]:
+    """Returns the configured base_url if commander sync is enabled and has
+    a URL set, else None — the shared "is there anything to do" gate used by
+    both the heartbeat and the full sync below."""
+    enabled = (settings.get("commander_sync_enabled") or "").lower() == "true"
+    if not enabled:
+        return None
+    base_url = (settings.get("commander_reader_url") or "").strip().rstrip("/")
+    return base_url or None
+
+
+def check_commander_heartbeat(engine: sqlalchemy.Engine, settings: Optional[dict] = None) -> None:
+    """Cheap, frequent /health-only probe — deliberately separate from the
+    hourly full price sync below so Settings -> Commander price sync shows
+    current status within a few minutes rather than up to an hour stale.
+    Never touches /prices or fuel_prices. Never raises."""
+    settings = settings or {}
+    base_url = _configured(settings)
+    if not base_url:
+        return
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            health = client.get(f"{base_url}/health")
+            health.raise_for_status()
+            connected = health.json().get("connected") is not False
+        _record_status(
+            engine, connected=connected,
+            error=None if connected else "Commander unit unreachable (commander-reader is up, but connected=false)",
+        )
+    except Exception as exc:
+        logger.debug("Commander heartbeat check failed (%s)", exc)
+        try:
+            _record_status(engine, connected=False, error=str(exc))
+        except Exception:
+            pass
+
+
 def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = None) -> None:
     """Best-effort, single pass. Never raises — any failure is logged (and
     recorded to settings for the dashboard) and just retried on the next
@@ -150,13 +191,9 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
     of being changed from Settings -> Commander price sync, no restart."""
     settings = settings or {}
 
-    enabled = (settings.get("commander_sync_enabled") or "").lower() == "true"
-    if not enabled:
-        return  # feature off for this station — silent no-op either way
-
-    base_url = (settings.get("commander_reader_url") or "").strip().rstrip("/")
+    base_url = _configured(settings)
     if not base_url:
-        return  # enabled but never configured with a URL — nothing to do yet
+        return  # feature off, or enabled but never configured with a URL yet
 
     tier = (settings.get("commander_price_tier") or "cash").strip().lower()
     if tier not in ("cash", "credit"):
@@ -191,7 +228,7 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
             return
 
         grades_by_id = {g["id"]: g for g in payload.get("grades", [])}
-        default_rate = _default_tax_rate_percent()
+        default_rate = _default_tax_rate_percent(settings)
 
         for tank in tanks:
             tank_id, name, grade_id = tank["id"], tank["name"], tank["commander_grade_id"]

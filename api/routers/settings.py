@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Setting
-from schemas import CommanderTestOut, DeviceIdOut, SettingsOut, SettingsUpdate
+from schemas import CommanderGradeOut, CommanderTestOut, DeviceIdOut, SettingsOut, SettingsUpdate
 
 router = APIRouter()
 
@@ -100,6 +100,7 @@ def _commander_defaults() -> dict:
         "commander_last_check_at": "",
         "commander_last_connected": "",
         "commander_last_error": "",
+        "default_tax_rate_percent": os.environ.get("DEFAULT_TAX_RATE_PERCENT", ""),
     }
 
 
@@ -162,6 +163,10 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         commander_last_check_at=commander_check_at,
         commander_last_connected=commander_connected,
         commander_last_error=v.get("commander_last_error") or None,
+        default_tax_rate_percent=(
+            float(v["default_tax_rate_percent"])
+            if (v.get("default_tax_rate_percent") or "").strip() else None
+        ),
         brand_preset=v.get("brand_preset") or "default",
         brand_primary_color=v.get("brand_primary_color") or "#3b82f6",
         brand_secondary_color=v.get("brand_secondary_color") or "#6366f1",
@@ -255,6 +260,11 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
             )
         _set(db, "commander_sync_interval_minutes", str(update.commander_sync_interval_minutes))
 
+    if update.default_tax_rate_percent is not None:
+        if update.default_tax_rate_percent < 0:
+            raise HTTPException(status_code=400, detail="default_tax_rate_percent must be >= 0")
+        _set(db, "default_tax_rate_percent", str(update.default_tax_rate_percent))
+
     # ── Branding ──────────────────────────────────────────────────────────
     if update.brand_preset is not None:
         _set(db, "brand_preset", update.brand_preset.strip()[:64])
@@ -317,7 +327,7 @@ def test_commander_connection(db: Session = Depends(get_db)):
 
     connected = False
     error = None
-    grades_count = None
+    grades: list[CommanderGradeOut] = []
     try:
         with httpx.Client(timeout=8.0) as client:
             health = client.get(f"{base_url}/health")
@@ -326,7 +336,14 @@ def test_commander_connection(db: Session = Depends(get_db)):
             if connected:
                 prices = client.get(f"{base_url}/prices")
                 prices.raise_for_status()
-                grades_count = len(prices.json().get("grades", []))
+                for g in prices.json().get("grades", []):
+                    in_effect = g.get("in_effect") or {}
+                    grades.append(CommanderGradeOut(
+                        id=g.get("id"),
+                        name=g.get("name") or f"Grade {g.get('id')}",
+                        cash=in_effect.get("cash"),
+                        credit=in_effect.get("credit"),
+                    ))
             else:
                 error = "commander-reader is reachable but reports the Commander itself is unreachable."
     except Exception as exc:
@@ -336,4 +353,7 @@ def test_commander_connection(db: Session = Depends(get_db)):
     _set(db, "commander_last_connected", "true" if connected else "false")
     _set(db, "commander_last_error", error or "")
 
-    return CommanderTestOut(connected=connected, checked_at=checked_at, error=error, grades_count=grades_count)
+    return CommanderTestOut(
+        connected=connected, checked_at=checked_at, error=error,
+        grades_count=len(grades) if connected else None, grades=grades,
+    )

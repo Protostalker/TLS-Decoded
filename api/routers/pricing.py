@@ -20,8 +20,10 @@ price" without touching cost.
 
 tax_rate_percent is also optional — when omitted (and no flat
 tax_fees_per_gallon override given either), it defaults from the
-DEFAULT_TAX_RATE_PERCENT env var so a station's tax rate is configured once
-rather than re-entered on every price change.
+default_tax_rate_percent setting (Settings -> Tax rate in the dashboard, live
+and DB-backed — DEFAULT_TAX_RATE_PERCENT env var only seeds its first value)
+so a station's tax rate is configured once rather than re-entered on every
+price change.
 """
 import os
 from datetime import datetime, timezone
@@ -31,15 +33,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import FuelPrice, Tank
+from models import FuelPrice, Setting, Tank
 from schemas import FuelPriceCreate, FuelPriceOut, FuelPriceUpdate
 
 router = APIRouter()
 
 
-def _default_tax_rate_percent() -> Optional[float]:
-    raw = os.environ.get("DEFAULT_TAX_RATE_PERCENT")
-    if raw is None or raw.strip() == "":
+def _default_tax_rate_percent(db: Session) -> Optional[float]:
+    row = db.query(Setting).filter(Setting.key == "default_tax_rate_percent").first()
+    raw = (row.value if row else None) or os.environ.get("DEFAULT_TAX_RATE_PERCENT")
+    if raw is None or str(raw).strip() == "":
         return None
     try:
         return float(raw)
@@ -150,7 +153,7 @@ def add_price(tank_id: int, body: FuelPriceCreate, db: Session = Depends(get_db)
 
     tax_rate = body.tax_rate_percent
     if tax_rate is None and body.tax_fees_per_gallon is None:
-        tax_rate = _default_tax_rate_percent()
+        tax_rate = _default_tax_rate_percent(db)
 
     row = FuelPrice(
         tank_id=tank_id,
@@ -197,7 +200,7 @@ def update_price(price_id: int, body: FuelPriceUpdate, db: Session = Depends(get
     # (e.g. it predates the env-var default being configured).
     effective_rate = row.tax_rate_percent
     if effective_rate is None and body.tax_fees_per_gallon is None:
-        effective_rate = _default_tax_rate_percent()
+        effective_rate = _default_tax_rate_percent(db)
     if effective_rate is not None:
         row.tax_rate_percent = effective_rate
         row.tax_fees_per_gallon = _tax_dollars(float(row.cost_per_gallon or 0), float(effective_rate), None)

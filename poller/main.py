@@ -18,7 +18,7 @@ import sqlalchemy
 from sqlalchemy import text
 
 from analytics import compute_consumption_rate, detect_delivery
-from commander_prices import sync_commander_prices
+from commander_prices import check_commander_heartbeat, sync_commander_prices
 from config import AppConfig, TankConfig, load_config
 from mock_driver import MockDriver
 from models import DeliveryEvent, PollResult, TankReading
@@ -164,6 +164,11 @@ def seed_settings(engine: sqlalchemy.Engine, cfg: AppConfig) -> None:
         "commander_last_check_at": "",
         "commander_last_connected": "",
         "commander_last_error": "",
+        # Same seed-once-then-UI-wins pattern: DEFAULT_TAX_RATE_PERCENT env
+        # var only sets the initial value; Settings -> Tax rate is
+        # authoritative afterward, live, for both manual and Commander-synced
+        # price entries.
+        "default_tax_rate_percent": os.environ.get("DEFAULT_TAX_RATE_PERCENT", ""),
     }
     with engine.begin() as conn:
         for k, v in defaults.items():
@@ -602,13 +607,18 @@ def main() -> None:
 
     # Commander price sync (opt-in, no-op unless enabled in Settings) also
     # runs once at startup, then on its own interval below — fully decoupled
-    # from the TLS poll cadence above.
-    sync_commander_prices(engine, get_settings(engine))
+    # from the TLS poll cadence above. Heartbeat (cheap /health-only check)
+    # runs separately and much more often so Settings -> Commander price
+    # sync shows current status within minutes, not up to an hour stale.
+    startup_settings = get_settings(engine)
+    sync_commander_prices(engine, startup_settings)
+    check_commander_heartbeat(engine, startup_settings)
 
     now = datetime.now(tz=timezone.utc)
     last_poll_at = now
     last_slot_polled = current_aligned_slot(now, cfg.polling.interval_minutes)
     last_commander_sync_at = now
+    last_commander_heartbeat_at = now
 
     logger.info(
         "Entering scheduling loop — poll interval/alignment are now controlled "
@@ -662,6 +672,14 @@ def main() -> None:
         if now - last_commander_sync_at >= timedelta(minutes=commander_sync_interval):
             sync_commander_prices(engine, settings)
             last_commander_sync_at = now
+
+        # Heartbeat: cheap, frequent — independent of the full sync above so
+        # "last checked" in Settings -> Commander price sync stays within a
+        # few minutes of reality instead of up to an hour stale.
+        commander_heartbeat_interval = int(os.environ.get("COMMANDER_HEARTBEAT_INTERVAL_MINUTES", "5"))
+        if now - last_commander_heartbeat_at >= timedelta(minutes=commander_heartbeat_interval):
+            check_commander_heartbeat(engine, settings)
+            last_commander_heartbeat_at = now
 
         time.sleep(TICK_SECONDS)
 

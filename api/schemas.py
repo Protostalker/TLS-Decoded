@@ -191,6 +191,9 @@ class SettingsOut(BaseModel):
     commander_last_check_at: Optional[datetime] = None
     commander_last_connected: Optional[bool] = None
     commander_last_error: Optional[str] = None
+    # Applied automatically to new price entries (manual or Commander-synced)
+    # when a rate isn't given explicitly — see api/routers/pricing.py.
+    default_tax_rate_percent: Optional[float] = None
     # Branding — see routers/settings.py's _brand_defaults()/validation.
     brand_preset: str
     brand_primary_color: str
@@ -214,6 +217,7 @@ class SettingsUpdate(BaseModel):
     commander_reader_url: Optional[str] = None
     commander_price_tier: Optional[str] = None
     commander_sync_interval_minutes: Optional[int] = None
+    default_tax_rate_percent: Optional[float] = None
     brand_preset: Optional[str] = None
     brand_primary_color: Optional[str] = None
     brand_secondary_color: Optional[str] = None
@@ -225,11 +229,19 @@ class DeviceIdOut(BaseModel):
     device_id: str
 
 
+class CommanderGradeOut(BaseModel):
+    id: int
+    name: str
+    cash: Optional[float] = None
+    credit: Optional[float] = None
+
+
 class CommanderTestOut(BaseModel):
     connected: bool
     checked_at: datetime
     error: Optional[str] = None
     grades_count: Optional[int] = None
+    grades: list[CommanderGradeOut] = []
 
 
 class HealthOut(BaseModel):

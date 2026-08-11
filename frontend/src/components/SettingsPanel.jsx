@@ -33,14 +33,11 @@ const btn = (primary) => ({
 function TankEditor({ tank, onSaved }) {
   const [capacity, setCapacity] = useState(tank.capacity_gallons ?? '')
   const [reorder, setReorder] = useState(tank.reorder_threshold_gallons ?? '')
-  const [gradeId, setGradeId] = useState(tank.commander_grade_id ?? '')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
-  const gradeIdNormalized = tank.commander_grade_id ?? ''
   const dirty = Number(capacity) !== tank.capacity_gallons
     || Number(reorder) !== tank.reorder_threshold_gallons
-    || String(gradeId) !== String(gradeIdNormalized)
 
   const save = async () => {
     setSaving(true); setMsg(null)
@@ -48,7 +45,6 @@ function TankEditor({ tank, onSaved }) {
       const updated = await api.updateTank(tank.id, {
         capacity_gallons: Number(capacity),
         reorder_threshold_gallons: Number(reorder),
-        commander_grade_id: gradeId === '' ? null : Number(gradeId),
       })
       setMsg('Saved')
       onSaved?.(updated)
@@ -76,11 +72,6 @@ function TankEditor({ tank, onSaved }) {
           <input type="number" min={0} value={reorder} onChange={e => setReorder(e.target.value)}
             style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
         </div>
-        <div style={{ flex: 1, minWidth: 90 }}>
-          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Commander grade ID</div>
-          <input type="number" min={0} value={gradeId} onChange={e => setGradeId(e.target.value)}
-            placeholder="not connected" style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
-        </div>
         <button
           disabled={saving || !dirty}
           onClick={save}
@@ -90,8 +81,9 @@ function TankEditor({ tank, onSaved }) {
         </button>
       </div>
       <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 4 }}>
-        Grade ID confirmed with whoever set up this station's Commander — leave blank if this
-        tank isn't wired to a Commander unit. Sale price then syncs hourly once set.
+        Commander grade: {tank.commander_grade_id != null
+          ? <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }}>id {tank.commander_grade_id}</span>
+          : 'not connected'} — set/change this in Commander price sync below.
       </div>
       {msg && <div style={{ fontSize: 10, color: msg === 'Saved' ? '#86efac' : '#fca5a5', marginTop: 4 }}>{msg}</div>}
     </div>
@@ -124,6 +116,15 @@ export default function SettingsPanel({ open, onClose }) {
   const [commanderInterval, setCommanderInterval] = useState(60)
   const [testingCommander, setTestingCommander] = useState(false)
   const [commanderTestResult, setCommanderTestResult] = useState(null)
+  // { [tankId]: gradeId as string, '' means unassigned } — local, dirty-tracked
+  // copy of each tank's commander_grade_id, only pushed on "Save assignments".
+  const [gradeAssignments, setGradeAssignments] = useState({})
+  const [savingGrades, setSavingGrades] = useState(false)
+
+  // Tax rate — applied automatically to every new price entry (manual or
+  // Commander-synced) unless overridden per-entry. Same live-settings
+  // pattern as everything else on this panel.
+  const [taxRate, setTaxRate] = useState('')
 
   // Branding — theme colors + logo for this station's dashboard.
   const [brandPreset, setBrandPreset] = useState('default')
@@ -141,6 +142,9 @@ export default function SettingsPanel({ open, onClose }) {
       setAligned(s.poll_aligned)
       setDeviceIdInput(s.device_id)
       setTanks(t)
+      setGradeAssignments(Object.fromEntries(
+        t.map(x => [x.id, x.commander_grade_id != null ? String(x.commander_grade_id) : ''])
+      ))
       setCloudSyncEnabled(s.cloud_sync_enabled)
       setCloudSyncUrl(s.cloud_sync_url)
       setCloudSyncDeviceId(s.cloud_sync_device_id)
@@ -150,17 +154,39 @@ export default function SettingsPanel({ open, onClose }) {
       setCommanderUrl(s.commander_reader_url)
       setCommanderTier(s.commander_price_tier)
       setCommanderInterval(s.commander_sync_interval_minutes)
+      setTaxRate(s.default_tax_rate_percent ?? '')
       setBrandPreset(s.brand_preset)
       setBrandPrimary(s.brand_primary_color)
       setBrandSecondary(s.brand_secondary_color)
       setBrandAccent(s.brand_accent_color)
       setBrandLogo(s.brand_logo_data_url)
+
+      // Auto-load the grade list (for the assignment picker below) if
+      // Commander sync is already configured — saves a manual "Test
+      // connection" click just to see what's available to assign.
+      if (s.commander_sync_enabled && s.commander_reader_url) {
+        api.testCommander().then(setCommanderTestResult).catch(() => {})
+      }
     } catch (e) {
       setStatus({ type: 'error', msg: e.message })
     }
   }, [])
 
   useEffect(() => { if (open) load() }, [open, load])
+
+  // Lightweight status refresh while the panel is open — only updates the
+  // read-only `settings` object (last-checked/connected/error), never the
+  // editable form fields above, so it can't clobber an in-progress edit.
+  // This is what makes the Commander heartbeat visible without reopening
+  // the panel: the poller writes a fresh status every ~5 min, this just
+  // needs to notice.
+  useEffect(() => {
+    if (!open) return
+    const t = setInterval(() => {
+      api.settings().then(setSettings).catch(() => {})
+    }, 30_000)
+    return () => clearInterval(t)
+  }, [open])
 
   if (!open) return null
 
@@ -243,6 +269,38 @@ export default function SettingsPanel({ open, onClose }) {
     navigator.clipboard?.writeText(commanderCurl)
     setStatus({ type: 'ok', msg: 'Command copied to clipboard.' })
   }
+
+  const commanderGrades = commanderTestResult?.grades ?? []
+  const assignedGradeIds = new Set(
+    Object.values(gradeAssignments).filter(v => v !== '').map(String)
+  )
+  const gradesDirty = (tanks ?? []).some(
+    t => (gradeAssignments[t.id] ?? '') !== (t.commander_grade_id != null ? String(t.commander_grade_id) : '')
+  )
+
+  const saveGradeAssignments = async () => {
+    setSavingGrades(true); setStatus(null)
+    try {
+      const changed = (tanks ?? []).filter(
+        t => (gradeAssignments[t.id] ?? '') !== (t.commander_grade_id != null ? String(t.commander_grade_id) : '')
+      )
+      const updated = await Promise.all(changed.map(t => {
+        const v = gradeAssignments[t.id]
+        return api.updateTank(t.id, { commander_grade_id: v === '' ? null : Number(v) })
+      }))
+      setTanks(ts => ts.map(t => updated.find(u => u.id === t.id) ?? t))
+      setStatus({ type: 'ok', msg: `Grade assignment${changed.length === 1 ? '' : 's'} saved — Commander sync picks this up within ~15s.` })
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message })
+    } finally {
+      setSavingGrades(false)
+    }
+  }
+
+  const saveTaxRate = () => save(
+    { default_tax_rate_percent: taxRate === '' ? null : Number(taxRate) },
+    'Tax rate saved — applied automatically to new price entries from now on.',
+  )
 
   const applyPreset = (id) => {
     const p = findPreset(id)
@@ -512,8 +570,8 @@ export default function SettingsPanel({ open, onClose }) {
                 Pulls the live pump (sale) price hourly from a commander-reader instance in front
                 of a Verifone Commander. Fully optional — if this station doesn't run Commander, or
                 the operator won't allow the integration, leave this off and keep entering both cost
-                and sale price manually via each tank's Pricing panel, exactly as before. Per-tank
-                grade ID mapping is set above under Tank sizes.
+                and sale price manually via each tank's Pricing panel, exactly as before. Assign
+                which Commander grade belongs to which tank below, once connected.
               </div>
 
               <div style={{ marginTop: 10 }}>
@@ -597,6 +655,57 @@ export default function SettingsPanel({ open, onClose }) {
                 </div>
               )}
 
+              {/* Grade assignment — modular: driven entirely by whatever tanks
+                  exist and whatever grades this station's Commander actually
+                  returns, never hardcoded to Unleaded/Super/Diesel or to a
+                  fixed grade count. Lines up 1:1 with the same tanks the
+                  Pricing panel shows margin for. */}
+              {commanderGrades.length > 0 && (
+                <div style={{
+                  marginTop: 12, background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)',
+                  borderRadius: 8, padding: '10px 12px',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 8 }}>
+                    Assign grades to tanks
+                  </div>
+                  {(tanks ?? []).map(t => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <div style={{ flex: 1, fontSize: 12, color: 'var(--brand-text, #cbd5e1)' }}>{t.name}</div>
+                      <select
+                        value={gradeAssignments[t.id] ?? ''}
+                        onChange={e => setGradeAssignments(g => ({ ...g, [t.id]: e.target.value }))}
+                        style={{ ...inputStyle, flex: 2, padding: '5px 8px', fontSize: 12 }}
+                      >
+                        <option value="">— N/A (not connected) —</option>
+                        {commanderGrades.map(g => (
+                          <option key={g.id} value={g.id}>
+                            {g.id} — {g.name}{g.cash != null ? ` — $${g.cash.toFixed(3)}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+
+                  <button
+                    disabled={savingGrades || !gradesDirty}
+                    style={{ ...btn(true), width: '100%', marginTop: 8, opacity: gradesDirty ? 1 : 0.4 }}
+                    onClick={saveGradeAssignments}
+                  >
+                    Save grade assignments
+                  </button>
+
+                  <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 8 }}>
+                    Unassigned grades (N/A):{' '}
+                    {commanderGrades.filter(g => !assignedGradeIds.has(String(g.id))).length === 0
+                      ? 'none'
+                      : commanderGrades
+                          .filter(g => !assignedGradeIds.has(String(g.id)))
+                          .map(g => `${g.id} (${g.name})`)
+                          .join(', ')}
+                  </div>
+                </div>
+              )}
+
               <div style={{
                 marginTop: 10, fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
               }}>
@@ -612,6 +721,33 @@ export default function SettingsPanel({ open, onClose }) {
                       {' — '}{settings.commander_last_connected ? 'connected' : (settings.commander_last_error || 'not connected')}
                     </span>
                   : <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>Never checked yet.</span>}
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
+
+            {/* Tax rate */}
+            <div style={row}>
+              <label style={label}>Tax rate</label>
+              <div style={hint}>
+                Applied automatically to every new price entry — manual or Commander-synced — so
+                it's set once here instead of typed into the Pricing panel every time.
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <input
+                  type="number" step="0.0001" min={0}
+                  value={taxRate}
+                  onChange={e => setTaxRate(e.target.value)}
+                  placeholder="e.g. 9.75"
+                  style={inputStyle}
+                />
+                <button
+                  disabled={saving}
+                  style={{ ...btn(true), padding: '8px 16px' }}
+                  onClick={saveTaxRate}
+                >
+                  Save
+                </button>
               </div>
             </div>
 
