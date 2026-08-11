@@ -58,6 +58,13 @@ sizes, and thresholds are all configurable.
   every product from one panel instead of switching tanks one at a time —
   works the same way locally and from the cloud portal (a cloud-side update
   queues to the station and applies within seconds of it next checking in).
+- **Automated sale price (optional, Commander)** — a station running
+  [commander-reader](#automated-pricing-commander-price-sync) in front of a
+  Verifone Commander can have the live pump (sale) price synced in
+  automatically on an hourly timer instead of typed in. Cost per gallon
+  stays a manual entry either way — see **Automated pricing (Commander
+  price sync)** below for why, and for the grade-assignment picker and
+  station-wide tax rate setting that go with it.
 - **Weather + maintenance heads-up (optional, cloud)** — set a station's zip
   code from the cloud admin panel to get current conditions plus
   forecast-driven reminders (rain → check tank vent cap covers, freeze →
@@ -193,6 +200,11 @@ gauges (chart, stats, tables, deliveries) reflects the selected tank.
   alignment; "Poll now" for an immediate read.
 - *Device ID* — view, copy, regenerate, or manually set the hex ID used for
   a future cloud-sync feature.
+- *Commander price sync* — optional auto-sync of sale price from a
+  `commander-reader` instance, plus per-tank grade assignment. Off by
+  default; see **Automated pricing (Commander price sync)** below.
+- *Tax rate* — one station-wide rate applied automatically to every new
+  price entry, manual or Commander-synced.
 
 **Delivery panel**
 - Auto-detected deliveries show a net figure and, when different, an
@@ -223,6 +235,63 @@ on the next sync cycle.
 
 ---
 
+## Automated pricing (Commander price sync)
+
+Optional, station-side, off by default. Connects tls-decoded to a separate
+project — **commander-reader** (its own repo, its own deployment, not part
+of this `docker-compose.yml` — runs independently on the station's Docker
+host) — a small read-only REST proxy that sits on the station's LAN in front
+of a **Verifone Commander** pump controller/POS, polling it over NAXML and
+caching the result at `http://<host>:8200`. tls-decoded's `poller` talks to
+*commander-reader*, never to the Commander unit directly.
+
+**Why only the sale price is automatic, never the cost.** Commander
+controls what's live at the pump — the retail sale price — and has no way
+to know what the station paid its fuel supplier; that number only ever
+comes from a supplier invoice. So this integration syncs
+`sale_price_per_gallon` on an hourly timer and leaves `cost_per_gallon` a
+manual entry via the Pricing panel, same as always. **That's the one
+remaining manual step** — see *Next step* below for the plan to close it.
+
+**Setup — Settings ⚙ → Commander price sync:**
+1. Enable the checkbox and enter the `commander-reader` URL
+   (`http://<host>:8200`), price tier (cash/credit), and sync interval
+   (default 60 min). Save.
+2. Click **Test connection now** — this also fetches the live grade list.
+   The panel shows the equivalent `curl http://<host>:8200/health` command
+   too, for checking from the Docker host directly if the button says
+   unreachable but you suspect a Docker-networking quirk rather than
+   `commander-reader` actually being down.
+3. **Assign grades to tanks** — grade IDs are per-station Commander config,
+   never portable across stations and not reliably guessable (duplicate
+   grade names with different IDs are common). The panel lists every grade
+   the Commander reports (ID, name, live price) with a dropdown per tank;
+   anything left unassigned shows explicitly as N/A so nothing syncs by
+   accident. Confirm the correct mapping with whoever set up the station's
+   Commander before assigning — don't guess from the name alone.
+4. A tank needs at least one manual price entry (a starting cost) before
+   sync can begin — there's nothing to carry the cost forward from
+   otherwise. After that, sync carries the last known cost forward
+   unchanged and only updates the sale price each cycle.
+
+**Tax rate** (Settings ⚙ → Tax rate) — set once, station-wide, applied
+automatically to every new price entry (manual or Commander-synced) instead
+of being typed in each time.
+
+**Status** — a lightweight heartbeat checks `commander-reader`'s `/health`
+every 5 minutes (independent of the hourly full sync) so "last checked" in
+Settings stays current within minutes rather than up to an hour stale.
+
+**Next step:** the plan is to check whether the station's fuel distributor
+will allow polling their pricing data directly (API/EDI feed, if they
+expose one) — that would be the natural way to also automate cost per
+gallon, the same way Commander automates sale price. Until/unless that
+access is granted, cost stays a quick manual update via the Pricing panel
+whenever a new supplier invoice comes in — the rest of this integration
+works fully today regardless of that outcome.
+
+---
+
 ## API reference
 
 All endpoints are under `/api`. Full interactive docs at `/docs`.
@@ -241,9 +310,10 @@ All endpoints are under `/api`. Full interactive docs at `/docs`.
 | `POST /tanks/{id}/deliveries` | Manually log a delivery |
 | `GET /tanks/{id}/export`, `GET /export` | CSV export (raw), per-tank / all-tanks |
 | `GET /export/monthly-summary` | Monthly Ledger CSV |
-| `GET /settings`, `PUT /settings` | Poll interval/alignment, device ID, remote sync |
+| `GET /settings`, `PUT /settings` | Poll interval/alignment, device ID, remote sync, Commander price sync config, tax rate |
 | `POST /settings/poll-now` | Request an immediate poll |
 | `POST /settings/device-id/regenerate` | New random device ID |
+| `POST /settings/commander/test` | On-demand `commander-reader` health check + live grade list |
 | `GET /health` | Liveness check |
 
 ---
@@ -302,6 +372,7 @@ tls-decoded/
 │   ├── network_driver.py          # TCP socket + display-format parser
 │   ├── mock_driver.py             # fake data for local dev (network.mock: true)
 │   ├── analytics.py               # consumption rate, delivery detection
+│   ├── commander_prices.py        # optional: syncs sale price from commander-reader
 │   └── config.py / models.py
 ├── api/
 │   ├── main.py
@@ -310,7 +381,7 @@ tls-decoded/
 │       ├── tanks.py, readings.py, insights.py
 │       ├── deliveries.py          # confirm / manually log
 │       ├── pricing.py             # cost/tax/sale price history + margin calc
-│       ├── settings.py            # poll interval, device ID, cloud sync config
+│       ├── settings.py            # poll interval, device ID, cloud sync + Commander sync config, tax rate
 │       └── export.py              # CSV exports
 ├── frontend/
 │   └── src/components/
@@ -352,6 +423,16 @@ docker logs tls-decoded-sync-1     # if cloud sync is enabled — see cloud/READ
 set so the IP doesn't drift. Set `network.mock: true` to develop against
 fake data while troubleshooting hardware.
 
+**Commander price sync shows "unreachable"** — check Settings ⚙ → Commander
+price sync for the last error, and use the **Test connection now** button
+there (or the `curl` command it prints) to check `commander-reader`
+directly. Common causes: `commander-reader` isn't running, the URL/port is
+wrong, or the poller container can reach the Docker host network
+differently than your own machine does (the `curl` command is specifically
+for ruling that last one in/out). This never affects tank polling or the
+rest of the dashboard — it's fully independent, and pricing just stays
+manual while it's down.
+
 **Schema errors after pulling an update** — both the API and poller run
 idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migrations on
 startup, so a plain rebuild/restart should self-heal. If something still
@@ -370,6 +451,12 @@ regardless of start order.
   pushed down today (see **Pricing** above); v1 cloud sync is otherwise
   one-way, station → cloud only. See `cloud/README.md` and
   `CLOUD-ARCHITECTURE.md`'s open questions.
+- **Automated cost per gallon** — currently the one manual step left in
+  pricing (see **Automated pricing (Commander price sync)** above). Next
+  step is finding out whether the station's fuel distributor will allow
+  polling their pricing data directly; if so, cost could sync the same way
+  sale price does today. Until/unless that access exists, cost stays a
+  manual entry.
 
 ---
 
