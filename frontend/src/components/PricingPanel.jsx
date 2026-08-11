@@ -44,25 +44,21 @@ function Tile({ label, value, accent, sub }) {
 
 export function PriceForm({ tank, initial, onDone, onCancel }) {
   const [cost, setCost] = useState(initial?.cost_per_gallon ?? '')
-  const [taxRate, setTaxRate] = useState(initial?.tax_rate_percent ?? '')
   const [sale, setSale] = useState(initial?.sale_price_per_gallon ?? '')
   const [when, setWhen] = useState(initial ? toLocalInputValue(initial.effective_at) : nowLocalInputValue())
   const [note, setNote] = useState(initial?.note ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
 
-  const taxDollars = (cost !== '' && taxRate !== '')
-    ? (Number(cost) * Number(taxRate) / 100)
-    : null
+  const commanderLinked = !!tank?.commander_grade_id
 
   const submit = async () => {
-    if (cost === '' || sale === '') { setErr('Cost and sale price are required'); return }
+    if (cost === '' && sale === '') { setErr('Enter at least one of cost or sale price'); return }
     setSaving(true); setErr(null)
     try {
       const body = {
-        cost_per_gallon: Number(cost),
-        tax_rate_percent: taxRate === '' ? null : Number(taxRate),
-        sale_price_per_gallon: Number(sale),
+        cost_per_gallon: cost === '' ? undefined : Number(cost),
+        sale_price_per_gallon: sale === '' ? undefined : Number(sale),
         effective_at: when,
         note: note || undefined,
       }
@@ -83,23 +79,20 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
       padding: '10px 12px', marginBottom: 10,
     }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <div style={{ width: 130 }}>
-          <div style={fieldLabel}>Cost / gal</div>
+        <div style={{ width: 150 }}>
+          <div style={fieldLabel}>Cost / gal (what you paid)</div>
           <input type="number" step="0.000001" min={0} value={cost} onChange={e => setCost(e.target.value)}
-            placeholder="4.000000" style={inputStyle} />
+            placeholder="leave blank to keep current" style={inputStyle} />
         </div>
-        <div style={{ width: 130 }}>
-          <div style={fieldLabel}>Tax rate (%)</div>
-          <input type="number" step="0.0001" min={0} value={taxRate} onChange={e => setTaxRate(e.target.value)}
-            placeholder="e.g. 9.75" style={inputStyle} />
-          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 3 }}>
-            {taxDollars != null ? `≈ $${taxDollars.toFixed(6)}/gal` : 'leave blank for $0 tax'}
-          </div>
-        </div>
-        <div style={{ width: 130 }}>
+        <div style={{ width: 150 }}>
           <div style={fieldLabel}>Sale price / gal</div>
           <input type="number" step="0.000001" min={0} value={sale} onChange={e => setSale(e.target.value)}
-            placeholder="4.999000" style={inputStyle} />
+            placeholder={commanderLinked ? 'auto-synced hourly' : 'leave blank to keep current'} style={inputStyle} />
+          {commanderLinked && (
+            <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 3 }}>
+              synced from Commander — only set this to override
+            </div>
+          )}
         </div>
         <div style={{ width: 190 }}>
           <div style={fieldLabel}>Effective from</div>
@@ -113,6 +106,9 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
             placeholder="e.g. supplier invoice #" style={inputStyle} />
         </div>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 8 }}>
+        Tax rate is applied automatically (station-wide setting) — no need to enter it here.
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button style={{ ...btn, background: 'var(--brand-primary, #3b82f6)', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
@@ -184,7 +180,9 @@ export default function PricingPanel({ tank }) {
 
       {!loading && !error && !current && !showAddForm && (
         <div style={{ textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', padding: 20, fontSize: 12 }}>
-          No pricing set yet — use "+ Update price" to enter cost, taxes/fees, and sale price
+          No pricing set yet — use "+ Update price" to enter a starting cost and sale price.
+          Tax is applied automatically; sale price syncs on its own afterward if this tank is
+          linked to Commander.
         </div>
       )}
 
@@ -222,7 +220,12 @@ export default function PricingPanel({ tank }) {
             sub={current.tax_rate_percent != null ? `${current.tax_rate_percent}% of cost` : null}
           />
           <Tile label="Breakeven" value={money(current.breakeven_per_gallon, 4)} />
-          <Tile label="Sale price" value={money(current.sale_price_per_gallon, 4)} accent="#93c5fd" />
+          <Tile
+            label="Sale price"
+            value={money(current.sale_price_per_gallon, 4)}
+            accent="#93c5fd"
+            sub={current.source === 'commander_auto' ? 'auto (Commander)' : 'manual'}
+          />
           <Tile label="Margin / gal" value={money(current.margin_per_gallon, 4)} accent={marginColor} />
           <Tile
             label="Margin %"
@@ -250,6 +253,9 @@ export default function PricingPanel({ tank }) {
                   <span style={{ color: h.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
                     margin {money(h.margin_per_gallon, 4)}
                   </span>
+                  {h.source === 'commander_auto' && (
+                    <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}> · auto (Commander)</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)' }}>

@@ -11,13 +11,14 @@ import re
 import secrets
 from datetime import datetime, timezone
 
+import httpx
 import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Setting
-from schemas import DeviceIdOut, SettingsOut, SettingsUpdate
+from schemas import CommanderTestOut, DeviceIdOut, SettingsOut, SettingsUpdate
 
 router = APIRouter()
 
@@ -83,11 +84,30 @@ def _cloud_sync_defaults() -> dict:
     }
 
 
+def _commander_defaults() -> dict:
+    """Commander price sync — normally seeded by the poller on its first
+    boot (poller/main.py's seed_settings(), from the COMMANDER_READER_URL /
+    COMMANDER_PRICE_TIER / COMMANDER_PRICE_SYNC_INTERVAL_MINUTES env vars).
+    This is only a fallback so /settings never 404s before the poller has
+    run — same reasoning as _cloud_sync_defaults() above. A station with no
+    Commander (or an operator who won't allow the integration) just leaves
+    this disabled/blank forever; nothing else depends on it."""
+    return {
+        "commander_sync_enabled": "false",
+        "commander_reader_url": "",
+        "commander_price_tier": "cash",
+        "commander_sync_interval_minutes": "60",
+        "commander_last_check_at": "",
+        "commander_last_connected": "",
+        "commander_last_error": "",
+    }
+
+
 def _get_all(db: Session) -> dict[str, str]:
     """Read all settings rows, seeding any missing keys with YAML/generated defaults."""
     rows = db.query(Setting).all()
     values = {r.key: (r.value or "") for r in rows}
-    defaults = {**_yaml_defaults(), **_cloud_sync_defaults(), **_brand_defaults()}
+    defaults = {**_yaml_defaults(), **_cloud_sync_defaults(), **_commander_defaults(), **_brand_defaults()}
     missing = {k: v for k, v in defaults.items() if k not in values}
     if missing:
         for k, v in missing.items():
@@ -111,6 +131,16 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         except ValueError:
             last_synced = None
 
+    commander_check_raw = v.get("commander_last_check_at") or ""
+    commander_check_at = None
+    if commander_check_raw:
+        try:
+            commander_check_at = datetime.fromisoformat(commander_check_raw)
+        except ValueError:
+            commander_check_at = None
+    commander_connected_raw = v.get("commander_last_connected") or ""
+    commander_connected = {"true": True, "false": False}.get(commander_connected_raw)
+
     return SettingsOut(
         poll_interval_minutes=int(v.get("poll_interval_minutes") or 60),
         poll_aligned=(v.get("poll_aligned") or "true").lower() == "true",
@@ -125,6 +155,13 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         cloud_sync_device_secret=v.get("cloud_sync_device_secret") or "",
         cloud_sync_interval_minutes=int(v.get("cloud_sync_interval_minutes") or 30),
         cloud_sync_last_synced_at=last_synced,
+        commander_sync_enabled=(v.get("commander_sync_enabled") or "false").lower() == "true",
+        commander_reader_url=v.get("commander_reader_url") or "",
+        commander_price_tier=v.get("commander_price_tier") or "cash",
+        commander_sync_interval_minutes=int(v.get("commander_sync_interval_minutes") or 60),
+        commander_last_check_at=commander_check_at,
+        commander_last_connected=commander_connected,
+        commander_last_error=v.get("commander_last_error") or None,
         brand_preset=v.get("brand_preset") or "default",
         brand_primary_color=v.get("brand_primary_color") or "#3b82f6",
         brand_secondary_color=v.get("brand_secondary_color") or "#6366f1",
@@ -193,6 +230,31 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
             )
         _set(db, "cloud_sync_interval_minutes", str(update.cloud_sync_interval_minutes))
 
+    # ── Commander price sync — picked up by the poller on its next ~15s
+    #    tick, no restart needed, same as poll_interval_minutes above. ──────
+    if update.commander_sync_enabled is not None:
+        _set(db, "commander_sync_enabled", "true" if update.commander_sync_enabled else "false")
+
+    if update.commander_reader_url is not None:
+        candidate = update.commander_reader_url.strip().rstrip("/")
+        if candidate and not re.match(r"^https?://", candidate):
+            raise HTTPException(status_code=400, detail="commander_reader_url must start with http:// or https://")
+        _set(db, "commander_reader_url", candidate)
+
+    if update.commander_price_tier is not None:
+        candidate = update.commander_price_tier.strip().lower()
+        if candidate not in ("cash", "credit"):
+            raise HTTPException(status_code=400, detail="commander_price_tier must be 'cash' or 'credit'")
+        _set(db, "commander_price_tier", candidate)
+
+    if update.commander_sync_interval_minutes is not None:
+        if not (1 <= update.commander_sync_interval_minutes <= 1440):
+            raise HTTPException(
+                status_code=400,
+                detail="commander_sync_interval_minutes must be between 1 and 1440",
+            )
+        _set(db, "commander_sync_interval_minutes", str(update.commander_sync_interval_minutes))
+
     # ── Branding ──────────────────────────────────────────────────────────
     if update.brand_preset is not None:
         _set(db, "brand_preset", update.brand_preset.strip()[:64])
@@ -232,3 +294,46 @@ def regenerate_device_id(db: Session = Depends(get_db)):
     new_id = secrets.token_hex(16)
     _set(db, "device_id", new_id)
     return DeviceIdOut(device_id=new_id)
+
+
+@router.post("/settings/commander/test", response_model=CommanderTestOut)
+def test_commander_connection(db: Session = Depends(get_db)):
+    """
+    On-demand check of whatever commander_reader_url is currently saved —
+    the UI equivalent of running `curl http://<host>:8200/health` yourself.
+    Result is also written to settings so it shows up passively afterward
+    without re-testing (poller's own periodic sync updates the same fields,
+    so this is just a way to check right now instead of waiting).
+    """
+    values = _get_all(db)
+    base_url = (values.get("commander_reader_url") or "").strip().rstrip("/")
+    checked_at = datetime.now(tz=timezone.utc)
+
+    if not base_url:
+        raise HTTPException(
+            status_code=400,
+            detail="No commander_reader_url configured yet — save one below first.",
+        )
+
+    connected = False
+    error = None
+    grades_count = None
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            health = client.get(f"{base_url}/health")
+            health.raise_for_status()
+            connected = health.json().get("connected") is not False
+            if connected:
+                prices = client.get(f"{base_url}/prices")
+                prices.raise_for_status()
+                grades_count = len(prices.json().get("grades", []))
+            else:
+                error = "commander-reader is reachable but reports the Commander itself is unreachable."
+    except Exception as exc:
+        error = str(exc)
+
+    _set(db, "commander_last_check_at", checked_at.isoformat())
+    _set(db, "commander_last_connected", "true" if connected else "false")
+    _set(db, "commander_last_error", error or "")
+
+    return CommanderTestOut(connected=connected, checked_at=checked_at, error=error, grades_count=grades_count)

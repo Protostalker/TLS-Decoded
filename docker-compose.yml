@@ -74,6 +74,9 @@ services:
     environment:
       DATABASE_URL: postgresql://tls:${DB_PASSWORD:-tls_local}@db:5432/tls_decoded
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-prod}
+      # Applied automatically to new price entries when a tax rate isn't
+      # given explicitly — see "Commander price sync" in .env.example.
+      DEFAULT_TAX_RATE_PERCENT: ${DEFAULT_TAX_RATE_PERCENT:-}
     volumes:
       - ./config:/app/config:ro
     ports:
@@ -99,6 +102,12 @@ services:
       # Override TLS host/port at runtime without editing the YAML:
       # TLS_HOST: 192.168.0.250
       # TLS_PORT: 5000
+      # Commander price sync (optional — see .env.example). Blank
+      # COMMANDER_READER_URL disables this entirely, no-op either way.
+      COMMANDER_READER_URL: ${COMMANDER_READER_URL:-}
+      COMMANDER_PRICE_TIER: ${COMMANDER_PRICE_TIER:-cash}
+      COMMANDER_PRICE_SYNC_INTERVAL_MINUTES: ${COMMANDER_PRICE_SYNC_INTERVAL_MINUTES:-60}
+      DEFAULT_TAX_RATE_PERCENT: ${DEFAULT_TAX_RATE_PERCENT:-}
     volumes:
       - ./config:/app/config:ro
     restart: unless-stopped

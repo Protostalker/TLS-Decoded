@@ -18,6 +18,7 @@ import sqlalchemy
 from sqlalchemy import text
 
 from analytics import compute_consumption_rate, detect_delivery
+from commander_prices import sync_commander_prices
 from config import AppConfig, TankConfig, load_config
 from mock_driver import MockDriver
 from models import DeliveryEvent, PollResult, TankReading
@@ -58,6 +59,22 @@ def ensure_schema(engine: sqlalchemy.Engine) -> None:
         reorder_threshold_gallons REAL,
         active BOOLEAN DEFAULT TRUE
     );
+
+    CREATE TABLE IF NOT EXISTS fuel_prices (
+        id BIGSERIAL PRIMARY KEY,
+        tank_id INTEGER REFERENCES tanks(id),
+        effective_at TIMESTAMPTZ NOT NULL,
+        cost_per_gallon NUMERIC(12,6),
+        tax_fees_per_gallon NUMERIC(12,6) DEFAULT 0,
+        tax_rate_percent NUMERIC(9,4),
+        sale_price_per_gallon NUMERIC(12,6),
+        source TEXT DEFAULT 'manual',
+        note TEXT,
+        created_at TIMESTAMPTZ
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_fuel_prices_tank_time
+        ON fuel_prices(tank_id, effective_at DESC);
 
     CREATE TABLE IF NOT EXISTS readings (
         id BIGSERIAL PRIMARY KEY,
@@ -108,6 +125,8 @@ def ensure_schema(engine: sqlalchemy.Engine) -> None:
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS merged_poll_count INTEGER DEFAULT 1",
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS session_started_at TIMESTAMPTZ",
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS note TEXT",
+        "ALTER TABLE fuel_prices ADD COLUMN IF NOT EXISTS tax_rate_percent NUMERIC(9,4)",
+        "ALTER TABLE tanks ADD COLUMN IF NOT EXISTS commander_grade_id INTEGER",
     ]
     with engine.begin() as conn:
         for m in migrations:
@@ -132,6 +151,19 @@ def seed_settings(engine: sqlalchemy.Engine, cfg: AppConfig) -> None:
         "remote_enabled": "true" if cfg.remote.enabled else "false",
         "remote_server_url": cfg.remote.server_url or "",
         "poll_now_requested_at": "",
+        # Commander price sync — env vars only seed this once, on first ever
+        # boot (ON CONFLICT DO NOTHING below). After that the dashboard's
+        # Settings -> Commander price sync toggle/fields are authoritative,
+        # live-editable without a restart. A station with no Commander (or
+        # an operator who won't allow the integration) just leaves this
+        # disabled — pricing stays fully manual, same as before this existed.
+        "commander_sync_enabled": "true" if os.environ.get("COMMANDER_READER_URL", "").strip() else "false",
+        "commander_reader_url": os.environ.get("COMMANDER_READER_URL", "").strip(),
+        "commander_price_tier": (os.environ.get("COMMANDER_PRICE_TIER") or "cash").strip().lower(),
+        "commander_sync_interval_minutes": os.environ.get("COMMANDER_PRICE_SYNC_INTERVAL_MINUTES", "60"),
+        "commander_last_check_at": "",
+        "commander_last_connected": "",
+        "commander_last_error": "",
     }
     with engine.begin() as conn:
         for k, v in defaults.items():
@@ -568,9 +600,15 @@ def main() -> None:
     # ── First poll immediately ──
     poller.run_poll()
 
+    # Commander price sync (opt-in, no-op unless enabled in Settings) also
+    # runs once at startup, then on its own interval below — fully decoupled
+    # from the TLS poll cadence above.
+    sync_commander_prices(engine, get_settings(engine))
+
     now = datetime.now(tz=timezone.utc)
     last_poll_at = now
     last_slot_polled = current_aligned_slot(now, cfg.polling.interval_minutes)
+    last_commander_sync_at = now
 
     logger.info(
         "Entering scheduling loop — poll interval/alignment are now controlled "
@@ -616,6 +654,14 @@ def main() -> None:
             poller.run_poll()
             last_poll_at = datetime.now(tz=timezone.utc)
             last_slot_polled = current_aligned_slot(last_poll_at, interval_minutes)
+
+        commander_sync_interval = int(
+            settings.get("commander_sync_interval_minutes")
+            or os.environ.get("COMMANDER_PRICE_SYNC_INTERVAL_MINUTES", "60")
+        )
+        if now - last_commander_sync_at >= timedelta(minutes=commander_sync_interval):
+            sync_commander_prices(engine, settings)
+            last_commander_sync_at = now
 
         time.sleep(TICK_SECONDS)
 

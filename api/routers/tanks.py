@@ -67,6 +67,15 @@ def update_tank(tank_id: int, update: TankUpdate, db: Session = Depends(get_db))
             raise HTTPException(status_code=400, detail="reorder_threshold_gallons must be >= 0")
         tank.reorder_threshold_gallons = update.reorder_threshold_gallons
 
+    # commander_grade_id supports explicit clearing (unlike the fields above),
+    # so it's checked via model_fields_set rather than "is not None" — sending
+    # {"commander_grade_id": null} disconnects the tank from Commander price
+    # sync, while simply omitting the key leaves whatever's already set alone.
+    if "commander_grade_id" in update.model_fields_set:
+        if update.commander_grade_id is not None and update.commander_grade_id < 0:
+            raise HTTPException(status_code=400, detail="commander_grade_id must be >= 0")
+        tank.commander_grade_id = update.commander_grade_id
+
     db.commit()
     db.refresh(tank)
 

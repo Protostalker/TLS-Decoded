@@ -33,10 +33,14 @@ const btn = (primary) => ({
 function TankEditor({ tank, onSaved }) {
   const [capacity, setCapacity] = useState(tank.capacity_gallons ?? '')
   const [reorder, setReorder] = useState(tank.reorder_threshold_gallons ?? '')
+  const [gradeId, setGradeId] = useState(tank.commander_grade_id ?? '')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
-  const dirty = Number(capacity) !== tank.capacity_gallons || Number(reorder) !== tank.reorder_threshold_gallons
+  const gradeIdNormalized = tank.commander_grade_id ?? ''
+  const dirty = Number(capacity) !== tank.capacity_gallons
+    || Number(reorder) !== tank.reorder_threshold_gallons
+    || String(gradeId) !== String(gradeIdNormalized)
 
   const save = async () => {
     setSaving(true); setMsg(null)
@@ -44,6 +48,7 @@ function TankEditor({ tank, onSaved }) {
       const updated = await api.updateTank(tank.id, {
         capacity_gallons: Number(capacity),
         reorder_threshold_gallons: Number(reorder),
+        commander_grade_id: gradeId === '' ? null : Number(gradeId),
       })
       setMsg('Saved')
       onSaved?.(updated)
@@ -60,16 +65,21 @@ function TankEditor({ tank, onSaved }) {
       padding: '10px 12px', marginBottom: 8,
     }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text, #cbd5e1)', marginBottom: 6 }}>{tank.name}</div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 90 }}>
           <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Capacity (gal)</div>
           <input type="number" min={1} value={capacity} onChange={e => setCapacity(e.target.value)}
             style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 90 }}>
           <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Reorder at (gal)</div>
           <input type="number" min={0} value={reorder} onChange={e => setReorder(e.target.value)}
             style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 90 }}>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Commander grade ID</div>
+          <input type="number" min={0} value={gradeId} onChange={e => setGradeId(e.target.value)}
+            placeholder="not connected" style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
         </div>
         <button
           disabled={saving || !dirty}
@@ -78,6 +88,10 @@ function TankEditor({ tank, onSaved }) {
         >
           Save
         </button>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 4 }}>
+        Grade ID confirmed with whoever set up this station's Commander — leave blank if this
+        tank isn't wired to a Commander unit. Sale price then syncs hourly once set.
       </div>
       {msg && <div style={{ fontSize: 10, color: msg === 'Saved' ? '#86efac' : '#fca5a5', marginTop: 4 }}>{msg}</div>}
     </div>
@@ -101,6 +115,16 @@ export default function SettingsPanel({ open, onClose }) {
   const [cloudSyncInterval, setCloudSyncInterval] = useState(30)
   const [showSecret, setShowSecret] = useState(false)
 
+  // Commander price sync — distinct from cloud sync above. Off for any
+  // station that doesn't run Verifone Commander, or whose operator won't
+  // allow the integration; pricing just stays fully manual in that case.
+  const [commanderEnabled, setCommanderEnabled] = useState(false)
+  const [commanderUrl, setCommanderUrl] = useState('')
+  const [commanderTier, setCommanderTier] = useState('cash')
+  const [commanderInterval, setCommanderInterval] = useState(60)
+  const [testingCommander, setTestingCommander] = useState(false)
+  const [commanderTestResult, setCommanderTestResult] = useState(null)
+
   // Branding — theme colors + logo for this station's dashboard.
   const [brandPreset, setBrandPreset] = useState('default')
   const [brandPrimary, setBrandPrimary] = useState('var(--brand-primary, #3b82f6)')
@@ -122,6 +146,10 @@ export default function SettingsPanel({ open, onClose }) {
       setCloudSyncDeviceId(s.cloud_sync_device_id)
       setCloudSyncDeviceSecret(s.cloud_sync_device_secret)
       setCloudSyncInterval(s.cloud_sync_interval_minutes)
+      setCommanderEnabled(s.commander_sync_enabled)
+      setCommanderUrl(s.commander_reader_url)
+      setCommanderTier(s.commander_price_tier)
+      setCommanderInterval(s.commander_sync_interval_minutes)
       setBrandPreset(s.brand_preset)
       setBrandPrimary(s.brand_primary_color)
       setBrandSecondary(s.brand_secondary_color)
@@ -187,6 +215,34 @@ export default function SettingsPanel({ open, onClose }) {
     cloud_sync_device_secret: cloudSyncDeviceSecret,
     cloud_sync_interval_minutes: cloudSyncInterval,
   }, 'Cloud sync settings saved — the sync service picks this up within ~15s, no restart needed.')
+
+  const saveCommander = () => save({
+    commander_sync_enabled: commanderEnabled,
+    commander_reader_url: commanderUrl,
+    commander_price_tier: commanderTier,
+    commander_sync_interval_minutes: commanderInterval,
+  }, 'Commander price sync settings saved — the poller picks this up within ~15s, no restart needed.')
+
+  const handleTestCommander = async () => {
+    setTestingCommander(true); setCommanderTestResult(null); setStatus(null)
+    try {
+      const r = await api.testCommander()
+      setCommanderTestResult(r)
+      const s = await api.settings()
+      setSettings(s)
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message })
+    } finally {
+      setTestingCommander(false)
+    }
+  }
+
+  const commanderCurl = `curl ${(commanderUrl || 'http://<commander-reader-host>:8200').replace(/\/$/, '')}/health`
+
+  const copyCommanderCurl = () => {
+    navigator.clipboard?.writeText(commanderCurl)
+    setStatus({ type: 'ok', msg: 'Command copied to clipboard.' })
+  }
 
   const applyPreset = (id) => {
     const p = findPreset(id)
@@ -437,6 +493,125 @@ export default function SettingsPanel({ open, onClose }) {
                   : <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>
                       {cloudSyncEnabled ? 'Not synced yet — first push happens within ~15s of saving.' : 'Never synced.'}
                     </span>}
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
+
+            {/* Commander price sync */}
+            <div style={row}>
+              <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={commanderEnabled}
+                  onChange={e => setCommanderEnabled(e.target.checked)}
+                />
+                Commander price sync
+              </label>
+              <div style={hint}>
+                Pulls the live pump (sale) price hourly from a commander-reader instance in front
+                of a Verifone Commander. Fully optional — if this station doesn't run Commander, or
+                the operator won't allow the integration, leave this off and keep entering both cost
+                and sale price manually via each tank's Pricing panel, exactly as before. Per-tank
+                grade ID mapping is set above under Tank sizes.
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>commander-reader URL</div>
+                <input
+                  value={commanderUrl}
+                  onChange={e => setCommanderUrl(e.target.value)}
+                  placeholder="http://<commander-reader-host>:8200"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Price tier</div>
+                  <select value={commanderTier} onChange={e => setCommanderTier(e.target.value)} style={inputStyle}>
+                    <option value="cash">Cash</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Sync interval (minutes)</div>
+                  <input
+                    type="number" min={1} max={1440}
+                    value={commanderInterval}
+                    onChange={e => setCommanderInterval(Number(e.target.value))}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+              <div style={hint}>Default 60 — how often the sale price is refreshed. Independent of the TLS poll interval above.</div>
+
+              <button
+                disabled={saving}
+                style={{ ...btn(true), width: '100%', marginTop: 10 }}
+                onClick={saveCommander}
+              >
+                Save Commander sync settings
+              </button>
+
+              <div style={{
+                marginTop: 12, background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)',
+                borderRadius: 8, padding: '10px 12px',
+              }}>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 6 }}>
+                  Check it yourself, from the Docker host:
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <code style={{
+                    flex: 1, fontFamily: 'monospace', fontSize: 11, color: 'var(--brand-text, #cbd5e1)',
+                    background: 'var(--brand-surface-2, #0b0f19)', padding: '6px 8px', borderRadius: 6,
+                    overflowX: 'auto', whiteSpace: 'nowrap',
+                  }}>{commanderCurl}</code>
+                  <button style={{ ...btn(false), padding: '6px 10px', fontSize: 11 }} onClick={copyCommanderCurl}>Copy</button>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 6 }}>
+                  Should return <code>{'{"connected": true, ...}'}</code>. Useful if the button below says
+                  unreachable but you suspect it's a Docker networking quirk rather than commander-reader
+                  actually being down — the host machine and the containers don't always see the network
+                  the same way.
+                </div>
+              </div>
+
+              <button
+                disabled={testingCommander || !commanderUrl}
+                style={{ ...btn(false), width: '100%', marginTop: 10 }}
+                onClick={handleTestCommander}
+              >
+                {testingCommander ? 'Testing…' : '⚡ Test connection now'}
+              </button>
+
+              {commanderTestResult && (
+                <div style={{
+                  marginTop: 8, fontSize: 11, padding: '8px 10px', borderRadius: 7,
+                  background: commanderTestResult.connected ? '#052e16' : '#450a0a',
+                  color: commanderTestResult.connected ? '#86efac' : '#fca5a5',
+                }}>
+                  {commanderTestResult.connected
+                    ? `Connected — ${commanderTestResult.grades_count ?? '?'} grade(s) in the response.`
+                    : (commanderTestResult.error || 'Could not connect.')}
+                </div>
+              )}
+
+              <div style={{
+                marginTop: 10, fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
+                  background: settings.commander_last_connected ? '#22c55e'
+                    : settings.commander_last_connected === false ? '#ef4444'
+                    : 'var(--brand-text-faint, #475569)',
+                }} />
+                {settings.commander_last_check_at
+                  ? <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }}>
+                      Last checked {formatDistanceToNow(parseISO(settings.commander_last_check_at), { addSuffix: true })}
+                      {' — '}{settings.commander_last_connected ? 'connected' : (settings.commander_last_error || 'not connected')}
+                    </span>
+                  : <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>Never checked yet.</span>}
               </div>
             </div>
 

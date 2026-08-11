@@ -16,6 +16,13 @@ class Tank(Base):
     capacity_gallons: Mapped[float | None] = mapped_column(Float)
     reorder_threshold_gallons: Mapped[float | None] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Commander-reader grade id this tank corresponds to, at this station's
+    # Commander unit specifically. Grade ids are NOT portable across stations
+    # (or even reliably guessable from grade name — duplicate names with
+    # different ids are common). NULL means "not wired to Commander" — the
+    # hourly price sync skips any tank without this set. Confirm the mapping
+    # with whoever knows the station before setting it.
+    commander_grade_id: Mapped[int | None] = mapped_column(Integer)
 
     readings: Mapped[list["Reading"]] = relationship(
         "Reading", back_populates="tank", order_by="Reading.polled_at.desc()"

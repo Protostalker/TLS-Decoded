@@ -96,6 +96,8 @@ export const api = {
 
   regenerateDeviceId: () => request('/settings/device-id/regenerate', { method: 'POST' }),
 
+  testCommander: () => request('/settings/commander/test', { method: 'POST' }),
+
   exportUrl: (tankId, year, month) =>
     `${BASE}/tanks/${tankId}/export?year=${year}&month=${month}`,
 
