@@ -9,6 +9,7 @@ import PricingPanel from '../components/PricingPanel.jsx'
 import Footer from '../components/Footer.jsx'
 import { applyBrandTheme } from '../brandTheme.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import useIsMobile from '../hooks/useIsMobile.js'
 
 const POLL_MS = 60_000
 
@@ -19,6 +20,9 @@ export default function StationDashboardPage() {
   const { id } = useParams()
   const { user } = useAuth()
   const isSupplier = user?.role === 'supplier'
+  const isMobile = useIsMobile(768)
+  const isTablet = useIsMobile(1200)
+  const gaugeGridCols = isMobile ? '1fr 1fr' : isTablet ? '1fr 1fr 1fr' : 'repeat(auto-fit, minmax(200px, 280px))'
   const [data, setData] = useState(null)
   const [selectedTankId, setSelectedTankId] = useState(null)
   const [error, setError] = useState(null)
@@ -100,12 +104,9 @@ export default function StationDashboardPage() {
             <WeatherPanel stationId={id} />
             {!isSupplier && <PricingPanel stationId={id} tanks={data.tanks} />}
 
-            {/* Gauge grid: auto-fit minmax naturally gives 2 cols on ~390px mobile,
-                3 on tablet, 4+ on desktop — no JS breakpoint needed. */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 280px))',
-              justifyContent: 'center',
+              gridTemplateColumns: gaugeGridCols,
               gap: 16,
               marginBottom: 24,
             }}>
