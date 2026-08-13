@@ -55,45 +55,47 @@ export default function ConsumptionPanel({ tank }) {
       )}
 
       {rows.length > 0 && (
-        <div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1.5fr 1fr 1fr',
-            fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', textTransform: 'uppercase',
-            letterSpacing: 0.4, padding: '0 8px 6px', borderBottom: '1px solid var(--brand-border, #2d3348)',
-          }}>
-            <span>Interval end</span>
-            <span>Gallons</span>
-            <span>Rate</span>
-          </div>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 300 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1.5fr 1fr 1fr',
+              fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', textTransform: 'uppercase',
+              letterSpacing: 0.4, padding: '0 8px 6px', borderBottom: '1px solid var(--brand-border, #2d3348)',
+            }}>
+              <span>Interval end</span>
+              <span>Gallons</span>
+              <span>Rate</span>
+            </div>
 
-          <div style={{
-            maxHeight: ROW_H * VISIBLE_ROWS,
-            overflowY: rows.length > VISIBLE_ROWS ? 'auto' : 'visible',
-          }}>
-            {rows.map((r, i) => (
-              <div key={r.to_time + i} style={{
-                display: 'grid',
-                gridTemplateColumns: '1.5fr 1fr 1fr',
-                fontSize: 12, padding: '8px 8px',
-                height: ROW_H - 8, alignItems: 'center',
-                borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--brand-border-soft, #262b3d)',
-              }}>
-                <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }}>{format(new Date(r.to_time), 'MMM d HH:mm')}</span>
-                {r.is_increase ? (
-                  <span style={{ color: '#86efac' }}>+{Math.abs(r.delta_gallons).toFixed(0)} gal ⛽</span>
-                ) : (
-                  <span style={{ color: 'var(--brand-text, #e2e8f0)' }}>-{r.delta_gallons.toFixed(0)} gal</span>
-                )}
-                <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>
-                  {r.rate_gal_per_hour != null ? `${r.rate_gal_per_hour.toFixed(1)} gal/hr` : '—'}
-                </span>
-              </div>
-            ))}
-          </div>
+            <div style={{
+              maxHeight: ROW_H * VISIBLE_ROWS,
+              overflowY: rows.length > VISIBLE_ROWS ? 'auto' : 'visible',
+            }}>
+              {rows.map((r, i) => (
+                <div key={r.to_time + i} style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.5fr 1fr 1fr',
+                  fontSize: 12, padding: '8px 8px',
+                  height: ROW_H - 8, alignItems: 'center',
+                  borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--brand-border-soft, #262b3d)',
+                }}>
+                  <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }}>{format(new Date(r.to_time), 'MMM d HH:mm')}</span>
+                  {r.is_increase ? (
+                    <span style={{ color: '#86efac' }}>+{Math.abs(r.delta_gallons).toFixed(0)} gal ⛽</span>
+                  ) : (
+                    <span style={{ color: 'var(--brand-text, #e2e8f0)' }}>-{r.delta_gallons.toFixed(0)} gal</span>
+                  )}
+                  <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>
+                    {r.rate_gal_per_hour != null ? `${r.rate_gal_per_hour.toFixed(1)} gal/hr` : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
 
-          <div style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)', marginTop: 8, textAlign: 'right' }}>
-            Showing {Math.min(VISIBLE_ROWS, rows.length)} of {rows.length} loaded (scroll for more) · ⛽ = volume rose (delivery)
+            <div style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)', marginTop: 8, textAlign: 'right' }}>
+              Showing {Math.min(VISIBLE_ROWS, rows.length)} of {rows.length} loaded (scroll for more) · ⛽ = volume rose (delivery)
+            </div>
           </div>
         </div>
       )}

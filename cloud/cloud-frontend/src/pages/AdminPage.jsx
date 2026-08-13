@@ -80,19 +80,21 @@ function CustomersTab() {
       {error && <ErrorBox message={error} />}
 
       <div style={card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr><th style={th}>Name</th><th style={th}>Stations</th><th style={th}>Users</th><th style={th}>Created</th></tr></thead>
-          <tbody>
-            {customers?.map(c => (
-              <tr key={c.id} style={{ borderTop: '1px solid #1e2130' }}>
-                <td style={td}>{c.name}</td>
-                <td style={td}>{c.station_count}</td>
-                <td style={td}>{c.user_count}</td>
-                <td style={{ ...td, color: '#64748b' }}>{new Date(c.created_at).toLocaleDateString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
+            <thead><tr><th style={th}>Name</th><th style={th}>Stations</th><th style={th}>Users</th><th style={th}>Created</th></tr></thead>
+            <tbody>
+              {customers?.map(c => (
+                <tr key={c.id} style={{ borderTop: '1px solid #1e2130' }}>
+                  <td style={td}>{c.name}</td>
+                  <td style={td}>{c.station_count}</td>
+                  <td style={td}>{c.user_count}</td>
+                  <td style={{ ...td, color: '#64748b' }}>{new Date(c.created_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {customers?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No customers yet.</div>}
       </div>
     </div>
@@ -207,31 +209,33 @@ function StationsTab() {
       )}
 
       <div style={card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>Name</th><th style={th}>Customer</th><th style={th}>Sync interval</th>
-              <th style={th}>Zip</th><th style={th}>Timezone</th><th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {stations?.map(s => (
-              <tr key={s.id} style={{ borderTop: '1px solid #1e2130' }}>
-                <td style={td}>{s.name}</td>
-                <td style={td}>{s.customer_name}</td>
-                <td style={td}>{s.sync_interval_minutes} min</td>
-                <td style={td}><ZipEditor station={s} onSave={saveZip} /></td>
-                <td style={td}><TimezoneEditor station={s} onSave={saveTimezone} /></td>
-                <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
-                <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>inactive</span>}</td>
-                <td style={{ ...td, display: 'flex', gap: 6 }}>
-                  <button onClick={() => rotate(s.id)} style={btnGhost}>Rotate credential</button>
-                  <button onClick={() => toggleActive(s)} style={btnGhost}>{s.active ? 'Deactivate' : 'Activate'}</button>
-                </td>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+            <thead>
+              <tr>
+                <th style={th}>Name</th><th style={th}>Customer</th><th style={th}>Sync interval</th>
+                <th style={th}>Zip</th><th style={th}>Timezone</th><th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {stations?.map(s => (
+                <tr key={s.id} style={{ borderTop: '1px solid #1e2130' }}>
+                  <td style={td}>{s.name}</td>
+                  <td style={td}>{s.customer_name}</td>
+                  <td style={td}>{s.sync_interval_minutes} min</td>
+                  <td style={td}><ZipEditor station={s} onSave={saveZip} /></td>
+                  <td style={td}><TimezoneEditor station={s} onSave={saveTimezone} /></td>
+                  <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
+                  <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>inactive</span>}</td>
+                  <td style={{ ...td, display: 'flex', gap: 6 }}>
+                    <button onClick={() => rotate(s.id)} style={btnGhost}>Rotate credential</button>
+                    <button onClick={() => toggleActive(s)} style={btnGhost}>{s.active ? 'Deactivate' : 'Activate'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {stations?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No stations provisioned yet.</div>}
       </div>
     </div>
@@ -349,6 +353,7 @@ function UsersTab() {
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={inputStyle}>
             <option value="user">user</option>
             <option value="admin">admin</option>
+            <option value="supplier">supplier</option>
           </select>
         </Field>
         <Field label="Customer">
@@ -363,43 +368,94 @@ function UsersTab() {
       {error && <ErrorBox message={error} />}
 
       <div style={card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>Email</th><th style={th}>Role</th><th style={th}>Customer</th>
-              <th style={th}>Status</th><th style={th}>Stations</th><th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users?.map(u => (
-              <React.Fragment key={u.id}>
-                <tr style={{ borderTop: '1px solid #1e2130' }}>
-                  <td style={td}>{u.email}</td>
-                  <td style={td}>{u.role}</td>
-                  <td style={td}>{u.customer_name ?? '—'}</td>
-                  <td style={td}>{u.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>disabled</span>}</td>
-                  <td style={td}>{u.assigned_station_ids.length}</td>
-                  <td style={{ ...td, display: 'flex', gap: 6 }}>
-                    <button onClick={() => setExpandedUser(expandedUser === u.id ? null : u.id)} style={btnGhost}>
-                      {expandedUser === u.id ? 'Close' : 'Manage'}
-                    </button>
-                    <button onClick={() => toggleActive(u)} style={btnGhost}>{u.active ? 'Disable' : 'Enable'}</button>
-                  </td>
-                </tr>
-                {expandedUser === u.id && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 0 }}>
-                      <UserDetail user={u} stations={stations} onChange={load} />
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+            <thead>
+              <tr>
+                <th style={th}>Email</th><th style={th}>Role</th><th style={th}>Customer</th>
+                <th style={th}>Status</th><th style={th}>Stations</th><th style={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {users?.map(u => (
+                <React.Fragment key={u.id}>
+                  <tr style={{ borderTop: '1px solid #1e2130' }}>
+                    <td style={td}>{u.email}</td>
+                    <td style={td}>{u.role}</td>
+                    <td style={td}>{u.customer_name ?? '—'}</td>
+                    <td style={td}>{u.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>disabled</span>}</td>
+                    <td style={td}>{u.assigned_station_ids.length}</td>
+                    <td style={{ ...td, display: 'flex', gap: 6 }}>
+                      <button onClick={() => setExpandedUser(expandedUser === u.id ? null : u.id)} style={btnGhost}>
+                        {expandedUser === u.id ? 'Close' : 'Manage'}
+                      </button>
+                      <button onClick={() => toggleActive(u)} style={btnGhost}>{u.active ? 'Disable' : 'Enable'}</button>
                     </td>
                   </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
+                  {expandedUser === u.id && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: 0 }}>
+                        <UserDetail user={u} stations={stations} onChange={load} />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {users?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No users yet.</div>}
       </div>
     </div>
+  )
+}
+
+function SetPasswordForm({ userId }) {
+  const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState(null)   // { text, ok }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setMsg(null)
+    if (pw !== confirm) { setMsg({ text: 'Passwords do not match', ok: false }); return }
+    setSaving(true)
+    try {
+      await api.admin.setUserPassword(userId, pw)
+      setPw(''); setConfirm('')
+      setMsg({ text: 'Password updated', ok: true })
+    } catch (e) {
+      setMsg({ text: e.message, ok: false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>Set password</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <input
+          type="password" required minLength={8}
+          placeholder="New password (≥8 chars)"
+          value={pw} onChange={e => setPw(e.target.value)}
+          style={{ ...inputStyle, minWidth: 180 }}
+        />
+        <input
+          type="password" required
+          placeholder="Confirm password"
+          value={confirm} onChange={e => setConfirm(e.target.value)}
+          style={{ ...inputStyle, minWidth: 180 }}
+        />
+        <button type="submit" disabled={saving} style={{ ...btn, minHeight: 44 }}>
+          {saving ? 'Saving…' : 'Set password'}
+        </button>
+      </div>
+      {msg && (
+        <div style={{ fontSize: 11, marginTop: 6, color: msg.ok ? '#86efac' : '#fca5a5' }}>{msg.text}</div>
+      )}
+    </form>
   )
 }
 
@@ -429,47 +485,51 @@ function UserDetail({ user, stations, onChange }) {
   const availableStations = stations?.filter(s => !user.assigned_station_ids.includes(s.id)) ?? []
 
   return (
-    <div style={{ background: '#0f1117', padding: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>Station assignments</div>
-        {assignedStations.map(s => (
-          <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: '1px solid #1e2130' }}>
-            <span>{s.name} <span style={{ color: '#64748b' }}>({s.customer_name})</span></span>
-            <button onClick={() => unassign(s.id)} style={btnGhost}>Remove</button>
+    <div style={{ background: '#0f1117', padding: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, marginBottom: 0 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>Station assignments</div>
+          {assignedStations.map(s => (
+            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: '1px solid #1e2130' }}>
+              <span>{s.name} <span style={{ color: '#64748b' }}>({s.customer_name})</span></span>
+              <button onClick={() => unassign(s.id)} style={btnGhost}>Remove</button>
+            </div>
+          ))}
+          {assignedStations.length === 0 && <div style={{ color: '#475569', fontSize: 12 }}>No stations assigned.</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <select value={pickStation} onChange={e => setPickStation(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+              <option value="">Assign a station…</option>
+              {availableStations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button onClick={assign} style={btn}>Assign</button>
           </div>
-        ))}
-        {assignedStations.length === 0 && <div style={{ color: '#475569', fontSize: 12 }}>No stations assigned.</div>}
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <select value={pickStation} onChange={e => setPickStation(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
-            <option value="">Assign a station…</option>
-            {availableStations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <button onClick={assign} style={btn}>Assign</button>
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Sessions</div>
+            <button onClick={revokeAll} style={btnGhost}>Revoke all</button>
+          </div>
+          {sessions?.map(s => (
+            <div key={s.id} style={{ fontSize: 11, padding: '6px 0', borderBottom: '1px solid #1e2130' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: s.revoked_at ? '#64748b' : '#e2e8f0' }}>
+                  {s.user_agent || 'unknown device'} · {s.ip_address || '—'}
+                </span>
+                {!s.revoked_at && <button onClick={() => revokeOne(s.id)} style={btnGhost}>Revoke</button>}
+              </div>
+              <div style={{ color: '#475569', marginTop: 2 }}>
+                last used {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'} ·{' '}
+                expires {s.expires_at ? new Date(s.expires_at).toLocaleDateString() : 'never'}
+                {s.revoked_at && <span style={{ color: '#fca5a5' }}> · revoked</span>}
+              </div>
+            </div>
+          ))}
+          {sessions?.length === 0 && <div style={{ color: '#475569', fontSize: 12 }}>No sessions.</div>}
         </div>
       </div>
 
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Sessions</div>
-          <button onClick={revokeAll} style={btnGhost}>Revoke all</button>
-        </div>
-        {sessions?.map(s => (
-          <div key={s.id} style={{ fontSize: 11, padding: '6px 0', borderBottom: '1px solid #1e2130' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: s.revoked_at ? '#64748b' : '#e2e8f0' }}>
-                {s.user_agent || 'unknown device'} · {s.ip_address || '—'}
-              </span>
-              {!s.revoked_at && <button onClick={() => revokeOne(s.id)} style={btnGhost}>Revoke</button>}
-            </div>
-            <div style={{ color: '#475569', marginTop: 2 }}>
-              last used {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'} ·{' '}
-              expires {s.expires_at ? new Date(s.expires_at).toLocaleDateString() : 'never'}
-              {s.revoked_at && <span style={{ color: '#fca5a5' }}> · revoked</span>}
-            </div>
-          </div>
-        ))}
-        {sessions?.length === 0 && <div style={{ color: '#475569', fontSize: 12 }}>No sessions.</div>}
-      </div>
+      <SetPasswordForm userId={user.id} />
     </div>
   )
 }

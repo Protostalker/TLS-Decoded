@@ -504,6 +504,8 @@ def station_tank_prices(
     station_id: int, tank_local_id: int, limit: int = 10,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
+    if user.role == "supplier":
+        raise HTTPException(status_code=403, detail="Suppliers do not have access to pricing data")
     require_station_access(station_id, db, user)
     rows = (
         db.query(CloudFuelPrice)
@@ -535,7 +537,13 @@ def station_tank_stats(
     tank = db.query(CloudTank).filter(CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id).first()
     if not tank:
         raise HTTPException(status_code=404, detail="Tank not found")
-    return _compute_tank_stats(db, station, tank)
+    stats = _compute_tank_stats(db, station, tank)
+    # Suppliers see operational data (gallons, water, deliveries) but not
+    # financial data (profit, margin).  Strip those fields before returning.
+    if user.role == "supplier":
+        for key in ("today_profit_dollars", "total_margin_7d", "current_margin_per_gallon"):
+            stats.pop(key, None)
+    return stats
 
 
 # ── Price updates from the cloud side (T1) ───────────────────────────────────
@@ -562,6 +570,8 @@ def submit_price_update(
     station_id: int, tank_local_id: int, body: PriceUpdateRequest,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
+    if user.role == "supplier":
+        raise HTTPException(status_code=403, detail="Suppliers do not have access to pricing data")
     require_station_access(station_id, db, user)
     if not db.query(CloudTank).filter(CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id).first():
         raise HTTPException(status_code=404, detail="Tank not found")
@@ -594,6 +604,8 @@ def list_price_updates(
     so the UI can show 'submitted, waiting for the station to pick it up'
     vs. 'applied at {time}' — the station polls on its own sync interval, so
     this isn't instant, same honesty-about-latency as the staleness badges."""
+    if user.role == "supplier":
+        raise HTTPException(status_code=403, detail="Suppliers do not have access to pricing data")
     require_station_access(station_id, db, user)
     rows = (
         db.query(PendingPriceUpdate)
@@ -616,15 +628,25 @@ def station_stats_summary(station_id: int, user: User = Depends(get_current_user
     )
     tank_stats = [_compute_tank_stats(db, station, t) for t in tanks]
 
+    # Strip financial fields for supplier role before building the summary.
+    is_supplier = user.role == "supplier"
+    if is_supplier:
+        financial_keys = ("today_profit_dollars", "total_margin_7d", "current_margin_per_gallon")
+        for ts in tank_stats:
+            for k in financial_keys:
+                ts.pop(k, None)
+
     def _sum(key: str) -> Optional[float]:
-        vals = [t[key] for t in tank_stats if t[key] is not None]
+        vals = [t[key] for t in tank_stats if t.get(key) is not None]
         return round(sum(vals), 2) if vals else None
 
-    return {
+    out: dict = {
         "today_consumed_gallons": _sum("today_consumed_gallons"),
-        "today_profit_dollars": _sum("today_profit_dollars"),
         "week_consumed_gallons": _sum("week_consumed_gallons"),
-        "total_margin_7d": _sum("total_margin_7d"),
         "avg_daily_gallons_30d": _sum("avg_daily_gallons_30d"),
         "tanks": tank_stats,
     }
+    if not is_supplier:
+        out["today_profit_dollars"] = _sum("today_profit_dollars")
+        out["total_margin_7d"] = _sum("total_margin_7d")
+    return out

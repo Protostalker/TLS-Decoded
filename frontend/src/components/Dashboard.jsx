@@ -114,9 +114,11 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-          <div style={{ fontSize:11, color:'var(--brand-text-faint, #475569)' }}>
-            Last poll: <span style={{ color:'var(--brand-text-dimmer, #64748b)' }}>{lastPoll}</span>
-          </div>
+          {!isMobile && (
+            <div style={{ fontSize:11, color:'var(--brand-text-faint, #475569)' }}>
+              Last poll: <span style={{ color:'var(--brand-text-dimmer, #64748b)' }}>{lastPoll}</span>
+            </div>
+          )}
           <div style={{ display:'flex', alignItems:'center', gap:6 }}>
             <div style={{
               width:8, height:8, borderRadius:'50%',

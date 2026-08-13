@@ -8,6 +8,7 @@ import StalenessBadge from '../components/StalenessBadge.jsx'
 import PricingPanel from '../components/PricingPanel.jsx'
 import Footer from '../components/Footer.jsx'
 import { applyBrandTheme } from '../brandTheme.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 const POLL_MS = 60_000
 
@@ -16,6 +17,8 @@ const POLL_MS = 60_000
 // copy instead of a local API, scoped to whichever station was picked in T2.
 export default function StationDashboardPage() {
   const { id } = useParams()
+  const { user } = useAuth()
+  const isSupplier = user?.role === 'supplier'
   const [data, setData] = useState(null)
   const [selectedTankId, setSelectedTankId] = useState(null)
   const [error, setError] = useState(null)
@@ -95,7 +98,7 @@ export default function StationDashboardPage() {
             </div>
 
             <WeatherPanel stationId={id} />
-            <PricingPanel stationId={id} tanks={data.tanks} />
+            {!isSupplier && <PricingPanel stationId={id} tanks={data.tanks} />}
 
             <div style={{
               display: 'flex', justifyContent: 'center', overflowX: 'auto',
@@ -122,7 +125,7 @@ export default function StationDashboardPage() {
             )}
 
             {selectedTank && (
-              <TankDetail stationId={id} tank={selectedTank} />
+              <TankDetail stationId={id} tank={selectedTank} isSupplier={isSupplier} />
             )}
           </>
         )}
@@ -214,7 +217,7 @@ function PredictionCard({ prediction }) {
   )
 }
 
-function TankDetail({ stationId, tank }) {
+function TankDetail({ stationId, tank, isSupplier }) {
   const [stats, setStats] = useState(null)
   const [deliveries, setDeliveries] = useState(null)
   const [prices, setPrices] = useState(null)
@@ -223,17 +226,22 @@ function TankDetail({ stationId, tank }) {
     setStats(null); setDeliveries(null); setPrices(null)
     api.stationTankStats(stationId, tank.local_id).then(setStats).catch(() => {})
     api.stationTankDeliveries(stationId, tank.local_id).then(setDeliveries).catch(() => {})
-    api.stationTankPrices(stationId, tank.local_id).then(setPrices).catch(() => {})
-  }, [stationId, tank.local_id])
+    if (!isSupplier) api.stationTankPrices(stationId, tank.local_id).then(setPrices).catch(() => {})
+  }, [stationId, tank.local_id, isSupplier])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      gap: 16,
+    }}>
       <Panel title="Stats">
         {!stats ? <Muted /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
             <Row label="Today consumed" value={fmtGal(stats.today_consumed_gallons)} />
-            <Row label="Today profit" value={fmtUsd(stats.today_profit_dollars)} />
+            {!isSupplier && <Row label="Today profit" value={fmtUsd(stats.today_profit_dollars)} />}
             <Row label="7-day consumed" value={fmtGal(stats.week_consumed_gallons)} />
+            {!isSupplier && <Row label="7-day margin" value={fmtUsd(stats.total_margin_7d)} />}
             <Row label="30-day avg/day" value={fmtGal(stats.avg_daily_gallons_30d)} />
             <Row label="Days since last delivery" value={stats.days_since_last_delivery ?? '—'} />
             <Row label="Water" value={stats.water_inches_latest !== null ? `${stats.water_inches_latest}"` : '—'}
@@ -242,35 +250,39 @@ function TankDetail({ stationId, tank }) {
         )}
       </Panel>
 
-      <Panel title="Current pricing">
-        {!prices ? <Muted /> : prices.length === 0 ? <Muted text="No pricing entered yet" /> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
-            <Row label="Sale price/gal" value={`$${prices[0].sale_price_per_gallon.toFixed(3)}`} />
-            <Row label="Cost/gal" value={`$${prices[0].cost_per_gallon.toFixed(3)}`} />
-            <Row label="Margin/gal" value={`$${prices[0].margin_per_gallon.toFixed(3)}`} />
-            <Row label="Effective" value={format(parseISO(prices[0].effective_at), 'MMM d, yyyy')} />
-          </div>
-        )}
-      </Panel>
+      {!isSupplier && (
+        <Panel title="Current pricing">
+          {!prices ? <Muted /> : prices.length === 0 ? <Muted text="No pricing entered yet" /> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+              <Row label="Sale price/gal" value={`$${prices[0].sale_price_per_gallon.toFixed(3)}`} />
+              <Row label="Cost/gal" value={`$${prices[0].cost_per_gallon.toFixed(3)}`} />
+              <Row label="Margin/gal" value={`$${prices[0].margin_per_gallon.toFixed(3)}`} />
+              <Row label="Effective" value={format(parseISO(prices[0].effective_at), 'MMM d, yyyy')} />
+            </div>
+          )}
+        </Panel>
+      )}
 
       <Panel title="Recent deliveries" span2>
         {!deliveries ? <Muted /> : deliveries.length === 0 ? <Muted text="No deliveries recorded yet" /> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ color: 'var(--brand-text-dimmer, #64748b)', textAlign: 'left' }}>
-                <th style={th}>Detected</th><th style={th}>Gallons received</th><th style={th}>Confirmed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deliveries.slice(0, 10).map(d => (
-                <tr key={d.local_id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
-                  <td style={td}>{format(parseISO(d.detected_at), 'MMM d, HH:mm')}</td>
-                  <td style={td}>{Math.round(d.effective_gallons_received ?? d.gallons_received ?? 0).toLocaleString()} gal</td>
-                  <td style={td}>{d.confirmed ? 'Yes' : 'Pending'}</td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 320 }}>
+              <thead>
+                <tr style={{ color: 'var(--brand-text-dimmer, #64748b)', textAlign: 'left' }}>
+                  <th style={th}>Detected</th><th style={th}>Gallons received</th><th style={th}>Confirmed</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {deliveries.slice(0, 10).map(d => (
+                  <tr key={d.local_id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
+                    <td style={td}>{format(parseISO(d.detected_at), 'MMM d, HH:mm')}</td>
+                    <td style={td}>{Math.round(d.effective_gallons_received ?? d.gallons_received ?? 0).toLocaleString()} gal</td>
+                    <td style={td}>{d.confirmed ? 'Yes' : 'Pending'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Panel>
     </div>

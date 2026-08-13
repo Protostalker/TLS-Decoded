@@ -78,6 +78,7 @@ export const api = {
     users: () => request('/admin/users'),
     createUser: (body) => request('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
     updateUser: (id, body) => request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    setUserPassword: (userId, password) => request(`/admin/users/${userId}/set-password`, { method: 'POST', body: JSON.stringify({ password }) }),
 
     createAssignment: (userId, stationId) =>
       request('/admin/assignments', { method: 'POST', body: JSON.stringify({ user_id: userId, station_id: stationId }) }),

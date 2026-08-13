@@ -212,6 +212,11 @@ class AssignmentCreate(BaseModel):
     station_id: int
 
 
+class SetPasswordRequest(BaseModel):
+    """Admin-only — set a user's password without knowing the old one."""
+    password: str
+
+
 # ── T1 (station-scoped, mirrors local api/schemas.py) ────────────────────────
 
 class ReadingOut(BaseModel):

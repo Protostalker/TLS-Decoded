@@ -94,7 +94,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    role: Mapped[str] = mapped_column(Text, nullable=False, default="user")  # "admin" | "user"
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="user")  # "admin" | "user" | "supplier"
     # Org grouping for display in T3 — visibility is still governed entirely
     # by user_station_assignments, not this field.
     customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id"))

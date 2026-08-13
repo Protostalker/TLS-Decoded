@@ -5,6 +5,7 @@ import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import Footer from '../components/Footer.jsx'
 import { deriveBrandPalette } from '../brandTheme.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 const card = {
   background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 18,
@@ -34,6 +35,8 @@ function stationCardTheme(station) {
 }
 
 export default function StationsPage() {
+  const { user } = useAuth()
+  const isSupplier = user?.role === 'supplier'
   const [stations, setStations] = useState(null)
   const [summary, setSummary] = useState(null)
   const [weather, setWeather] = useState(null)
@@ -103,9 +106,9 @@ export default function StationsPage() {
             </div>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
               <Stat label="Today consumed" value={fmtGal(summary.today_consumed_gallons)} />
-              <Stat label="Today profit" value={fmtUsd(summary.today_profit_dollars)} />
+              {!isSupplier && <Stat label="Today profit" value={fmtUsd(summary.today_profit_dollars)} />}
               <Stat label="7-day consumed" value={fmtGal(summary.week_consumed_gallons)} />
-              <Stat label="7-day margin" value={fmtUsd(summary.total_margin_7d)} />
+              {!isSupplier && <Stat label="7-day margin" value={fmtUsd(summary.total_margin_7d)} />}
               <Stat label="30-day avg/day" value={fmtGal(summary.avg_daily_gallons_30d)} />
               {stations.length > 1 && <Stat label="Stations" value={String(stations.length)} />}
             </div>
@@ -174,9 +177,9 @@ export default function StationsPage() {
                           marginTop: 14, fontSize: 12,
                         }}>
                           <Stat compact label="Today" value={fmtGal(stat.today_consumed_gallons)} theme={theme} />
-                          <Stat compact label="Profit" value={fmtUsd(stat.today_profit_dollars)} theme={theme} />
+                          {!isSupplier && <Stat compact label="Profit" value={fmtUsd(stat.today_profit_dollars)} theme={theme} />}
                           <Stat compact label="7d gal" value={fmtGal(stat.week_consumed_gallons)} theme={theme} />
-                          <Stat compact label="7d margin" value={fmtUsd(stat.total_margin_7d)} theme={theme} />
+                          {!isSupplier && <Stat compact label="7d margin" value={fmtUsd(stat.total_margin_7d)} theme={theme} />}
                           <Stat compact label="30d avg/day" value={fmtGal(stat.avg_daily_gallons_30d)} theme={theme} />
                           <Stat compact label="Last delivery" value={stat.days_since_last_delivery !== null && stat.days_since_last_delivery !== undefined ? `${stat.days_since_last_delivery}d ago` : '—'} theme={theme} />
                         </div>
@@ -184,7 +187,7 @@ export default function StationsPage() {
                         {stat.tanks?.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
                             {stat.tanks.map(t => (
-                              <TankPill key={t.tank_local_id} tank={t} theme={theme} />
+                              <TankPill key={t.tank_local_id} tank={t} theme={theme} hideFinancials={isSupplier} />
                             ))}
                           </div>
                         )}
@@ -229,7 +232,7 @@ function StationBadge({ station, theme }) {
   )
 }
 
-function TankPill({ tank, theme }) {
+function TankPill({ tank, theme, hideFinancials }) {
   const pct = tank.capacity_gallons && tank.current_volume_gallons != null
     ? Math.round((tank.current_volume_gallons / tank.capacity_gallons) * 100)
     : null
@@ -241,7 +244,7 @@ function TankPill({ tank, theme }) {
     }}>
       <span style={{ fontWeight: 700, color: theme.text }}>{tank.tank_name}</span>
       {pct !== null && <span>{pct}%</span>}
-      {tank.current_margin_per_gallon != null && <span>${tank.current_margin_per_gallon.toFixed(2)}/gal</span>}
+      {!hideFinancials && tank.current_margin_per_gallon != null && <span>${tank.current_margin_per_gallon.toFixed(2)}/gal</span>}
     </div>
   )
 }

@@ -18,9 +18,14 @@ from auth import gen_device_id, gen_device_secret, hash_secret, require_admin
 from database import get_db
 from models import Customer, Station, User, UserSession, UserStationAssignment
 from schemas import (
-    AssignmentCreate, CustomerCreate, CustomerOut, SessionOut, StationCreate,
-    StationCredentialOut, StationOut, StationUpdate, UserCreate, UserOut, UserUpdate,
+    AssignmentCreate, CustomerCreate, CustomerOut, SessionOut, SetPasswordRequest,
+    StationCreate, StationCredentialOut, StationOut, StationUpdate,
+    UserCreate, UserOut, UserUpdate,
 )
+
+# All three roles recognised by the system.  Keep in sync with the comment on
+# models.User.role and the frontend's role selector.
+VALID_ROLES = ("admin", "user", "supplier")
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -163,8 +168,8 @@ def create_user(body: UserCreate, db: Session = Depends(get_db)):
     from auth import hash_secret as hash_password  # same bcrypt hasher, different name for clarity at call site
     if db.query(User).filter(User.email == body.email.lower()).first():
         raise HTTPException(status_code=409, detail="Email already registered")
-    if body.role not in ("admin", "user"):
-        raise HTTPException(status_code=400, detail="role must be 'admin' or 'user'")
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail="role must be 'admin', 'user', or 'supplier'")
     u = User(
         email=body.email.lower(), password_hash=hash_password(body.password), role=body.role,
         customer_id=body.customer_id, active=True, created_at=datetime.now(tz=timezone.utc),
@@ -182,8 +187,8 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db)):
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     if body.role is not None:
-        if body.role not in ("admin", "user"):
-            raise HTTPException(status_code=400, detail="role must be 'admin' or 'user'")
+        if body.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail="role must be 'admin', 'user', or 'supplier'")
         u.role = body.role
     if body.active is not None:
         u.active = body.active
@@ -191,6 +196,25 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db)):
         u.customer_id = body.customer_id
     if body.password:
         u.password_hash = hash_password(body.password)
+    db.commit()
+    db.refresh(u)
+    return _user_out(db, u)
+
+
+@router.post("/admin/users/{user_id}/set-password", response_model=UserOut)
+def set_user_password(user_id: int, body: SetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Admin-only — set a password for any user without knowing their old one.
+    Regular users have no endpoint that changes their own password; this is
+    the only password-management surface in the system.
+    """
+    from auth import hash_secret as hash_password
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not body.password or len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    u.password_hash = hash_password(body.password)
     db.commit()
     db.refresh(u)
     return _user_out(db, u)
