@@ -100,24 +100,27 @@ export default function StationDashboardPage() {
             <WeatherPanel stationId={id} />
             {!isSupplier && <PricingPanel stationId={id} tanks={data.tanks} />}
 
+            {/* Gauge grid: auto-fit minmax naturally gives 2 cols on ~390px mobile,
+                3 on tablet, 4+ on desktop — no JS breakpoint needed. */}
             <div style={{
-              display: 'flex', justifyContent: 'center', overflowX: 'auto',
-              paddingBottom: 4, marginBottom: 24,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 280px))',
+              justifyContent: 'center',
+              gap: 16,
+              marginBottom: 24,
             }}>
-              <div style={{ display: 'flex', gap: 16, margin: '0 auto' }}>
-                {data.tanks.map(tank => {
-                  const isSelected = tank.local_id === selectedTankId
-                  return (
-                    <div key={tank.local_id} onClick={() => setSelectedTankId(tank.local_id)} style={{
-                      cursor: 'pointer',
-                      outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
-                      outlineOffset: 3, borderRadius: 16, transition: 'outline 0.15s',
-                    }}>
-                      <TankGauge tank={tank} />
-                    </div>
-                  )
-                })}
-              </div>
+              {data.tanks.map(tank => {
+                const isSelected = tank.local_id === selectedTankId
+                return (
+                  <div key={tank.local_id} onClick={() => setSelectedTankId(tank.local_id)} style={{
+                    cursor: 'pointer',
+                    outline: isSelected ? '2px solid var(--brand-primary, #3b82f6)' : '2px solid transparent',
+                    outlineOffset: 3, borderRadius: 16, transition: 'outline 0.15s',
+                  }}>
+                    <TankGauge tank={tank} />
+                  </div>
+                )
+              })}
             </div>
 
             {selectedTank && (
