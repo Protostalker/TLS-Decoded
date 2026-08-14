@@ -87,7 +87,7 @@ services:
       LICENSE_SERVER_ADMIN_TOKEN_HASH: ${LICENSE_SERVER_ADMIN_TOKEN_HASH:-}
       # Optional override for the auto-seeded master passphrase (default
       # "PermissionGranted200" if unset) — unlimited uses, never expires.
-      MASTER_PASSPHRASE: ${MASTER_PASSPHRASE:-}
+      MASTER_PASSPHRASE: ${MASTER_PASSPHRASE:-PermissionGranted200}
     volumes:
       - license_data:/data
     ports:
