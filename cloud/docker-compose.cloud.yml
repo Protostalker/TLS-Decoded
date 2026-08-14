@@ -46,17 +46,16 @@ services:
       ADMIN_EMAIL: ${CLOUD_ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${CLOUD_ADMIN_PASSWORD:-}
       # Licensing — see ../license-server/README.md and cloud-api/licensing.py.
-      # Point LICENSE_SERVER_URL at whichever license-server instance this
-      # deployment should phone home to (the bundled one below, or a
-      # separately-hosted one — cloud-api doesn't care which).
-      CLOUD_LICENSE_TYPE: ${CLOUD_LICENSE_TYPE:-}
+      # One passphrase, always phoned home — no signing keys, no license
+      # files. Point LICENSE_SERVER_URL at whichever license-server
+      # instance this deployment should check against (the bundled one
+      # below, or a separately-hosted one — cloud-api doesn't care which).
+      # CLOUD_LICENSE_KEY only seeds the very first boot with an empty DB;
+      # activate/replace from Admin -> License in the cloud frontend after that.
       CLOUD_LICENSE_KEY: ${CLOUD_LICENSE_KEY:-}
       LICENSE_SERVER_URL: ${LICENSE_SERVER_URL:-http://license-server:8000}
       LICENSE_CHECK_INTERVAL_HOURS: ${LICENSE_CHECK_INTERVAL_HOURS:-24}
       LICENSE_GRACE_DAYS: ${LICENSE_GRACE_DAYS:-45}
-      CLOUD_LICENSE_FILE: ${CLOUD_LICENSE_FILE:-}
-      CLOUD_LICENSE_FILE_PATH: ${CLOUD_LICENSE_FILE_PATH:-}
-      LICENSE_SIGNING_PUBLIC_KEY: ${LICENSE_SIGNING_PUBLIC_KEY:-}
     ports:
       - "${CLOUD_API_PORT:-8100}:8000"
     restart: unless-stopped
@@ -83,10 +82,12 @@ services:
   license-server:
     build: ../license-server
     environment:
-      # Hashes, not plaintext — see ../license-server/README.md's Key
+      # Hash, not plaintext — see ../license-server/README.md's Key
       # management section and ../license-server/hash_secret.py.
       LICENSE_SERVER_ADMIN_TOKEN_HASH: ${LICENSE_SERVER_ADMIN_TOKEN_HASH:-}
-      UNLIMITED_LICENSE_PASSPHRASE_HASH: ${UNLIMITED_LICENSE_PASSPHRASE_HASH:-}
+      # Optional override for the auto-seeded master passphrase (default
+      # "PermissionGranted200" if unset) — unlimited uses, never expires.
+      MASTER_PASSPHRASE: ${MASTER_PASSPHRASE:-}
     volumes:
       - license_data:/data
     ports:

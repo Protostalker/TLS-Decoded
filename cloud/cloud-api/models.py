@@ -302,45 +302,48 @@ class CloudLicenseState(Base):
     license state — cached locally so the app can answer "am I licensed?"
     instantly on every request without a network round-trip per check, and
     so degraded mode survives a restart while the license server happens to
-    be unreachable. See ../licensing.py for how this gets populated and
-    ../../CLOUD-ARCHITECTURE.md-style reasoning: this is Cloud Utility-only,
-    by design — the Local Instance has no equivalent table and never will.
+    be unreachable. See ../licensing.py for how this gets populated.
+
+    Deliberately simple, per Raffi's call: one passphrase, always phoned
+    home, no offline verification, no signing keys, no license files.
+
+    configured_passphrase is stored as entered (plaintext in this table) —
+    same as cloud_sync_device_secret in the station's own settings table:
+    it's a credential this service must re-present as-is on every
+    phone-home call, not a password being verified against a hash.
     """
     __tablename__ = "cloud_license_state"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    # What's actually CONFIGURED — set either by env vars at first boot
-    # (initial-deployment convenience only) or, from then on, by an admin
-    # via Admin -> License in the cloud frontend (routers/license.py's
-    # activate/deactivate endpoints). Once this is set via the UI, env vars
-    # are never consulted again — see licensing.py's _seed_from_env_once().
-    # configured_annual_key is stored as entered (plaintext in this table),
-    # the same way cloud_sync_device_secret is stored in the station's own
-    # settings table — it's a credential this service must re-present
-    # as-is on every phone-home call, not a password being verified against
-    # a hash. configured_unlimited_file has no confidentiality requirement
-    # at all (it's a signed-but-unencrypted JWT, verified fresh each check).
-    configured_type: Mapped[str | None] = mapped_column(Text)  # "annual" | "unlimited" | None
-    configured_annual_key: Mapped[str | None] = mapped_column(Text)
-    configured_unlimited_file: Mapped[str | None] = mapped_column(Text)
+    # What's actually CONFIGURED — set either by CLOUD_LICENSE_KEY at first
+    # boot (initial-deployment convenience only) or, from then on, by an
+    # admin via Admin -> License in the cloud frontend (routers/license.py's
+    # activate/deactivate). Once set via the UI, env vars are never
+    # consulted again — see licensing.py's _seed_from_env_once().
+    configured_passphrase: Mapped[str | None] = mapped_column(Text)
 
-    # What the last check EVALUATED to — derived from the configured_*
-    # fields above by licensing.run_license_check().
-    license_type: Mapped[str | None] = mapped_column(Text)   # "annual" | "unlimited" | None (unconfigured)
+    # Generated once, the first time this Cloud Utility ever activates a
+    # license, and never changed again — sent on every phone-home so the
+    # license server can tell "this same instance checking in again" apart
+    # from "a different instance trying to activate with the same code"
+    # (see license-server/models.py's LicenseRedemption). Persists across
+    # deactivating/reactivating with a different code on purpose — the
+    # SAME instance, new license.
+    instance_id: Mapped[str | None] = mapped_column(Text)
+
+    # What the last check returned.
     customer_name: Mapped[str | None] = mapped_column(Text)
     station_scope: Mapped[str | None] = mapped_column(Text)
 
     # "active" | "grace" | "degraded" | "unconfigured" — see licensing.py's
-    # evaluate_state() for the state machine. "grace" here means "currently
+    # run_license_check() for the state machine. "grace" means "currently
     # failing but within the 45-day window," matching the dev handoff doc's
-    # "unreachable or invalid for 45 consecutive days -> degraded" language;
-    # it is distinct from (but influenced by) any "grace" status the license
-    # server itself may return.
+    # "unreachable or invalid for 45 consecutive days -> degraded" language.
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unconfigured")
 
     activated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
-    expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))  # from the license server; irrelevant for Unlimited
+    expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))  # from the license server; NULL for the master/unlimited code
 
     last_check_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     last_check_ok: Mapped[bool | None] = mapped_column(Boolean)

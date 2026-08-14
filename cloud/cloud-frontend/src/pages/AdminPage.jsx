@@ -604,7 +604,7 @@ function LicenseTab() {
             {status.status.toUpperCase()}
           </span>
           <span style={{ color: '#94a3b8', fontSize: 13 }}>
-            {status.license_type ? `${status.license_type} license` : 'No license configured'}
+            {status.customer_name || 'No license configured'}
           </span>
           <button onClick={recheck} disabled={rechecking} style={{ ...btnGhost, marginLeft: 'auto' }}>
             {rechecking ? 'Checking…' : 'Re-check now'}
@@ -636,7 +636,7 @@ function LicenseTab() {
             <Row label="Customer" value={status.customer_name || '—'} />
             <Row label="Station scope" value={status.station_scope || '—'} />
             <Row label="Applied (activated)" value={fmt(status.activated_at)} />
-            <Row label="Expires" value={status.license_type === 'unlimited' ? 'Never (Unlimited)' : fmt(status.expires_at)} />
+            <Row label="Expires" value={status.expires_at ? fmt(status.expires_at) : 'Never'} />
             <Row label="Last check" value={fmt(status.last_check_at)} />
             <Row label="Last check result" value={status.last_check_detail || (status.last_check_ok ? 'OK' : '—')} />
           </tbody>
@@ -648,29 +648,23 @@ function LicenseTab() {
   )
 }
 
-// Submit/replace/clear the actual license credential from here — env vars
-// (CLOUD_LICENSE_TYPE/KEY/FILE) only ever seed this once, on a brand new
-// deployment with an empty database; every change after that (activating,
-// renewing with a new key, switching license types) goes through this form.
+// Submit/replace/clear the license passphrase from here — CLOUD_LICENSE_KEY
+// only ever seeds this once, on a brand new deployment with an empty
+// database; every change after that (activating, switching to a new code)
+// goes through this form. One passphrase, phoned home to the license
+// server — no keys, no files.
 function LicenseActivationCard({ config, onChanged }) {
-  const [mode, setMode] = useState('annual')
-  const [annualKey, setAnnualKey] = useState('')
-  const [unlimitedFile, setUnlimitedFile] = useState('')
+  const [passphrase, setPassphrase] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [msg, setMsg] = useState(null)
 
   const activate = async (e) => {
     e.preventDefault()
-    setSubmitting(true)
     setMsg(null)
+    setSubmitting(true)
     try {
-      if (mode === 'annual') {
-        await api.license.activateAnnual(annualKey.trim())
-        setAnnualKey('')
-      } else {
-        await api.license.activateUnlimited(unlimitedFile.trim())
-        setUnlimitedFile('')
-      }
+      await api.license.activate(passphrase.trim())
+      setPassphrase('')
       setMsg({ type: 'ok', text: 'License activated.' })
       onChanged()
     } catch (e) { setMsg({ type: 'error', text: e.message }) }
@@ -689,55 +683,32 @@ function LicenseActivationCard({ config, onChanged }) {
     finally { setSubmitting(false) }
   }
 
-  const onFilePicked = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUnlimitedFile((await file.text()).trim())
-  }
-
   return (
     <div style={card}>
       <div style={{ fontWeight: 700, marginBottom: 4 }}>
-        {config?.configured_type ? 'Replace license' : 'Activate a license'}
+        {config?.configured ? 'Replace license' : 'Activate a license'}
       </div>
       <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
-        {config?.configured_type === 'annual' && `Currently configured: Annual key ending …${config.annual_key_hint || '????'}.`}
-        {config?.configured_type === 'unlimited' && 'Currently configured: Unlimited license file present.'}
-        {!config?.configured_type && 'No license configured yet.'}
-        {' '}Paste a new one below to activate or replace it — no env var edits or restart needed. Env vars
+        {config?.configured
+          ? `Currently configured: passphrase ending …${config.passphrase_hint || '????'}.`
+          : 'No license configured yet.'}
+        {' '}Enter a passphrase below to activate or replace it — no env var edits or restart needed. Env vars
         only seed this once, on a fresh deployment.
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <button type="button" onClick={() => setMode('annual')} style={mode === 'annual' ? btn : btnGhost}>Annual</button>
-        <button type="button" onClick={() => setMode('unlimited')} style={mode === 'unlimited' ? btn : btnGhost}>Unlimited</button>
-      </div>
-
       <form onSubmit={activate}>
-        {mode === 'annual' ? (
-          <Field label="Annual license key">
-            <input
-              required value={annualKey} onChange={e => setAnnualKey(e.target.value)}
-              placeholder="tlsfp-…" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace' }}
-            />
-          </Field>
-        ) : (
-          <Field label="Unlimited license file (paste the JWT, or upload the file)">
-            <textarea
-              required value={unlimitedFile} onChange={e => setUnlimitedFile(e.target.value)}
-              placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9…"
-              rows={4}
-              style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', resize: 'vertical' }}
-            />
-            <input type="file" accept=".jwt,.txt,text/plain" onChange={onFilePicked} style={{ marginTop: 6, fontSize: 12 }} />
-          </Field>
-        )}
+        <Field label="License passphrase">
+          <input
+            required value={passphrase} onChange={e => setPassphrase(e.target.value)}
+            placeholder="e.g. GARDENA-2026" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace' }}
+          />
+        </Field>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button type="submit" disabled={submitting} style={btn}>
             {submitting ? 'Activating…' : 'Activate'}
           </button>
-          {config?.configured_type && (
+          {config?.configured && (
             <button type="button" onClick={deactivate} disabled={submitting} style={btnGhost}>
               Clear configured license
             </button>

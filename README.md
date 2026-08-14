@@ -364,8 +364,9 @@ Full setup, the auth model, and provisioning steps are in
 together is in [`CLOUD-ARCHITECTURE.md`](CLOUD-ARCHITECTURE.md).
 
 **Licensing** (Cloud Utility only — a station running standalone never
-touches this): Annual (phone-home, 45-day grace on a lapse) or Unlimited
-(one-time signed offline license file, no phone-home ever). See
+touches this): a simple passphrase, hand-issued and use-limited, always
+phoned home to `license-server` (45-day grace on a lapse) — no signing
+keys, no license files. See
 [`license-server/README.md`](license-server/README.md) for issuing licenses
 and [`docs/licensing-and-updates.md`](docs/licensing-and-updates.md) for the
 full picture, including what's still open for sign-off.

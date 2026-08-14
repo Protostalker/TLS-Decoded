@@ -1,19 +1,29 @@
 """
-Public(ish) surface — the Annual phone-home endpoint, plus the signing
-public key so a Cloud Utility operator can fetch it once at setup time
-instead of it being pasted around by hand. Nothing here requires the admin
-token: a Cloud Utility with a valid key must be able to check in even if
-the admin tooling's credentials rotate independently.
+The phone-home endpoint — no admin token needed, a Cloud Utility with a
+valid passphrase must be able to check in even if the admin tooling's
+credentials rotate independently.
+
+Redemption logic (see models.py's module docstring for why this is two
+tables, not one):
+
+  1. Look up the passphrase. Unknown / suspended / past its expires_at ->
+     invalid.
+  2. Does a LicenseRedemption already exist for (this license, this
+     instance_id)? -> this is a routine re-check from an already-activated
+     instance. Touch last_checked_at, return valid. Doesn't consume a use.
+  3. Otherwise, this instance is trying to activate for the first time.
+     If max_uses is NULL (unlimited/master) or the current redemption count
+     is still below max_uses -> create the redemption (consumes one use),
+     return valid. Otherwise -> invalid, "this code has already been used
+     its maximum number of times."
 """
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-import keys
-from auth import hash_key
 from database import get_db
-from models import AnnualLicense
+from models import License, LicenseRedemption
 from schemas import LicenseCheckRequest, LicenseCheckResponse
 
 router = APIRouter(prefix="/license", tags=["license"])
@@ -21,38 +31,57 @@ router = APIRouter(prefix="/license", tags=["license"])
 
 @router.post("/check", response_model=LicenseCheckResponse)
 def check_license(body: LicenseCheckRequest, request: Request, db: Session = Depends(get_db)):
-    lic = db.query(AnnualLicense).filter(AnnualLicense.key_hash == hash_key(body.license_key)).first()
+    lic = db.query(License).filter(License.passphrase == body.passphrase).first()
     now = datetime.now(tz=timezone.utc)
+    ip = request.client.host if request.client else None
 
     if not lic:
-        return LicenseCheckResponse(status="invalid", detail="Unknown license key")
-
-    lic.last_checked_at = now
-    lic.last_checked_ip = request.client.host if request.client else None
-    db.commit()
+        return LicenseCheckResponse(status="invalid", detail="Unknown passphrase")
 
     if lic.status == "suspended":
         return LicenseCheckResponse(
             status="invalid", customer_name=lic.customer_name, station_scope=lic.station_scope,
-            expires_at=lic.expires_at, renewed_at=lic.renewed_at, detail="License suspended",
+            expires_at=lic.expires_at, detail="This license has been suspended",
         )
 
-    expires_at = lic.expires_at if lic.expires_at.tzinfo else lic.expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < now:
-        return LicenseCheckResponse(
-            status="invalid", customer_name=lic.customer_name, station_scope=lic.station_scope,
-            expires_at=lic.expires_at, renewed_at=lic.renewed_at, detail="License period has ended — renew to restore access",
-        )
+    expires_at = lic.expires_at
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < now:
+            return LicenseCheckResponse(
+                status="invalid", customer_name=lic.customer_name, station_scope=lic.station_scope,
+                expires_at=lic.expires_at, detail="This license has expired — renew to restore access",
+            )
 
-    return LicenseCheckResponse(
-        status="valid", customer_name=lic.customer_name, station_scope=lic.station_scope,
-        expires_at=lic.expires_at, renewed_at=lic.renewed_at,
+    existing = (
+        db.query(LicenseRedemption)
+        .filter(LicenseRedemption.license_id == lic.id, LicenseRedemption.instance_id == body.instance_id)
+        .first()
     )
+    if existing:
+        existing.last_checked_at = now
+        existing.last_checked_ip = ip
+        db.commit()
+        return LicenseCheckResponse(
+            status="valid", customer_name=lic.customer_name, station_scope=lic.station_scope, expires_at=lic.expires_at,
+        )
 
+    # First check-in from this instance_id — this is an activation attempt.
+    if lic.max_uses is not None:
+        use_count = db.query(LicenseRedemption).filter(LicenseRedemption.license_id == lic.id).count()
+        if use_count >= lic.max_uses:
+            return LicenseCheckResponse(
+                status="invalid", customer_name=lic.customer_name, station_scope=lic.station_scope,
+                expires_at=lic.expires_at,
+                detail=f"This license has already been used its maximum number of times ({lic.max_uses}).",
+            )
 
-@router.get("/public-key")
-def public_key():
-    """PEM-encoded RSA public key used to verify Unlimited license files
-    (RS256-signed JWTs) — configure this as LICENSE_SIGNING_PUBLIC_KEY on
-    every Cloud Utility instance that might activate an Unlimited license."""
-    return {"public_key_pem": keys.public_key_pem()}
+    db.add(LicenseRedemption(
+        license_id=lic.id, instance_id=body.instance_id,
+        redeemed_at=now, last_checked_at=now, last_checked_ip=ip,
+    ))
+    db.commit()
+    return LicenseCheckResponse(
+        status="valid", customer_name=lic.customer_name, station_scope=lic.station_scope, expires_at=lic.expires_at,
+    )

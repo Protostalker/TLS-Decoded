@@ -24,70 +24,87 @@ runnable via Compose profiles before this work started.
 
 ## 2. License gating (Cloud Utility only)
 
-New service: **`license-server/`** — issues/validates Annual licenses
-(phone-home) and generates signed Unlimited license files. SQLite-backed
-(see `license-server/README.md` for why — low write volume, "keep this
-simple"). Own Compose profile (`license`), own Dockerfile, never contacted
-by a Local Instance.
+New service: **`license-server/`** — a database of passphrases you hand
+out, nothing more. SQLite-backed (see `license-server/README.md` for why —
+low write volume, "keep this simple"). Own Compose profile (`license`),
+own Dockerfile, never contacted by a Local Instance.
+
+**This section was rebuilt once already, after the first pass (Annual
+phone-home key + signed offline "Unlimited" license files, JWT-based) ran
+into real activation friction — confusing a passphrase for a license file,
+missing signing-key configuration, PEM formatting issues. Raffi's call was
+to throw that out for something deliberately simpler:** one passphrase
+type, always phoned home, no signing keys, no license files, no offline
+verification. What's below describes the current (second, simplified)
+design — see git history if you need the original spec's shape for
+reference.
+
+- You (Raffi) create a **License** by choosing the passphrase text
+  yourself (`POST /admin/licenses`, e.g. `GARDENA-2026`) — not
+  auto-generated, since this is a hand-issued system.
+- Each license has a **use limit** (`max_uses`, default 1 — how many
+  different Cloud Utility instances may activate with it) and a **fixed
+  expiry set at creation** (`valid_days`, default 365; omit for
+  never-expires).
+- A **master passphrase** (`PermissionGranted200` by default, override via
+  `MASTER_PASSPHRASE`) is auto-seeded on first boot with unlimited uses and
+  no expiry.
+- "1-time use" and "phones home every day" coexist via a redemption
+  record: a Cloud Utility generates a random `instance_id` for itself once
+  and persists it forever; its first successful check against a passphrase
+  consumes one use, every check after that from the same instance is a
+  free re-check. See `license-server/models.py`'s docstring for the
+  mechanics.
 
 Cloud Utility side (`cloud/cloud-api/`):
-- `models.CloudLicenseState` — single-row cache of current license status.
-- `licensing.py` — Annual phone-home + Unlimited offline JWT verification,
-  45-day grace-clock, degrade logic. Runs once on startup, then on a loop
-  (`LICENSE_CHECK_INTERVAL_HOURS`, default 24).
+- `models.CloudLicenseState` — single-row cache of current license status
+  (`configured_passphrase`, `instance_id`, plus status/dates).
+- `licensing.py` — one code path: POST `{passphrase, instance_id}` to
+  `{LICENSE_SERVER_URL}/license/check` on startup and on a loop
+  (`LICENSE_CHECK_INTERVAL_HOURS`, default 24). A run of failures
+  (unreachable OR the server says invalid) starts a 45-day grace clock
+  (`LICENSE_GRACE_DAYS`); a single successful check clears it immediately.
 - `routers/license.py` — `/api/license/banner` (any user), `/api/license/status`
-  + `/api/license/recheck` (admin only).
-- `auth.require_not_degraded` — new dependency, applied to `stations.py`,
+  + `/api/license/recheck` (admin only), `/api/license/config` +
+  `/api/license/activate` + `/api/license/deactivate` (admin only — submit
+  or clear the passphrase from the UI).
+- `auth.require_not_degraded` — dependency applied to `stations.py`,
   `supplier.py`, and `notifications.py`'s routers.
 
-**Degraded-mode scope, per your answer to the open question:** non-admin
+**Degraded-mode scope, per Raffi's answer to the open question:** non-admin
 users and suppliers lose access to *all* data served by those three
 routers while degraded — not just ordering/reports. Admins keep full
-functionality, including the new admin-only **License** page (Admin ->
-License tab in the cloud frontend) showing when the license was applied,
-when it expires, and whether currently in grace. `push.py`'s
-`vapid-public-key` endpoint was left ungated (it's unauthenticated
-subscription plumbing, not data) — flag if you want it gated too.
+functionality, including the admin-only **License** page (Admin -> License
+tab in the cloud frontend) showing when the license was applied, when it
+expires, and whether currently in grace. `push.py`'s `vapid-public-key`
+endpoint was left ungated (it's unauthenticated subscription plumbing, not
+data) — flag if you want it gated too.
 
 Historical data is never deleted on a lapse — degraded mode only blocks
 *serving* it to non-admins going forward; ingestion (`ingest.py`) is never
 gated at all, so new data keeps landing during a lapse, per spec.
 
-**Key management, per your answer:** the license server holds the RSA
-signing key (auto-generated + persisted to a mounted volume on first boot —
-see `license-server/keys.py`). `LICENSE_SERVER_ADMIN_TOKEN_HASH` gates all
-`/admin/*` routes on the license server. Unlimited license issuance
-additionally requires `X-Unlimited-Passphrase`, checked against
-`UNLIMITED_LICENSE_PASSPHRASE_HASH` — `PermissionGranted200` as you
-specified is the dev-only fallback if that's unset.
+**Key management.** `LICENSE_SERVER_ADMIN_TOKEN_HASH` gates all `/admin/*`
+routes on the license server — it's a **hash** (SHA-256), not the token
+itself, generate it with `python3 license-server/hash_secret.py`; the
+plaintext token only ever exists in your own hands. Passphrases themselves
+are stored as-is (not hashed) in the `licenses` table — they're reusable
+codes you look up and hand out again, not one-time secrets, so there's
+nothing to gain from hashing them.
 
-**Update since the first pass — secrets are now hashed, not plaintext.**
-Both `LICENSE_SERVER_ADMIN_TOKEN` and `UNLIMITED_LICENSE_PASSPHRASE`
-originally sat in `.env`/`.env.cloud` as plaintext. They're now
-`_HASH` env vars instead (SHA-256 for the admin token, bcrypt for the
-human-chosen passphrase — see `license-server/auth.py`'s module docstring
-for why those differ) — the actual secret is never stored anywhere,
-`.env`/`docker inspect`/a backup of either file only ever exposes something
-an incoming request's hash can be checked against, never the secret
-itself. Run `python3 license-server/hash_secret.py --type admin-token` (or
-`--type passphrase`) once to turn your chosen secret into the value that
-goes in the env file.
-
-**Update since the first pass — license activation moved into the UI.**
-`CLOUD_LICENSE_TYPE`/`CLOUD_LICENSE_KEY`/`CLOUD_LICENSE_FILE` are now an
-initial-deployment convenience only: they seed `CloudLicenseState` exactly
+**License activation lives in the UI.** `CLOUD_LICENSE_KEY` is an
+initial-deployment convenience only: it seeds `CloudLicenseState` exactly
 once, on a brand new deployment with an empty database
 (`licensing._seed_from_env_once`). From then on, activating a license,
-renewing with a new Annual key, switching to Unlimited, or clearing the
-configured license entirely is done from **Admin -> License** in the cloud
-frontend — paste the key or license file, no env edits or restart. Both
-paths validate before persisting (phone home for Annual, verify the
-signature for Unlimited) so a bad paste fails immediately with a clear
-error instead of silently starting a 45-day degrade clock. Deployment-level
+switching to a new passphrase, or clearing the configured license entirely
+is done from **Admin -> License** in the cloud frontend — paste the
+passphrase, no env edits or restart. Activation validates (phones home)
+before persisting, so a bad paste fails immediately with a clear error
+instead of silently starting a 45-day degrade clock. Deployment-level
 settings that describe *how this instance is wired up* rather than *which
-license it holds* — `LICENSE_SERVER_URL`, `LICENSE_SIGNING_PUBLIC_KEY`,
-`LICENSE_GRACE_DAYS`, `LICENSE_CHECK_INTERVAL_HOURS` — stay env-only; there's
-no reasonable "submit this in a form" story for those.
+license it holds* — `LICENSE_SERVER_URL`, `LICENSE_GRACE_DAYS`,
+`LICENSE_CHECK_INTERVAL_HOURS` — stay env-only; there's no reasonable
+"submit this in a form" story for those.
 
 ## 3. Update mechanism (Local Instance, opt-in)
 
@@ -138,17 +155,17 @@ Per your answer: auto-check every N days (default 7), `git pull` +
 
 ## What to configure before using any of this
 
-- **Nothing is required for local dev.** `CLOUD_LICENSE_TYPE` unset means
-  the Cloud Utility runs "unconfigured" — no gating triggers.
+- **Nothing is required for local dev.** `CLOUD_LICENSE_KEY` unset means
+  the Cloud Utility runs "unconfigured" — no gating triggers. (The license
+  server's own auto-seeded master passphrase, `PermissionGranted200`, works
+  out of the box if you do want to test the gated path.)
 - To license a real Cloud Utility deployment: stand up `license-server`
   (profile `license`), generate + set `LICENSE_SERVER_ADMIN_TOKEN_HASH` via
-  `hash_secret.py`, set `LICENSE_SIGNING_PUBLIC_KEY` on `cloud-api` (fetch it
-  from the license server's `GET /license/public-key`), issue a license via
-  the license server's admin API (see `license-server/README.md`), then
-  activate it from **Admin -> License** in the cloud frontend — no need to
-  put the key/file in env vars at all unless you want it pre-seeded before
-  first login. See `.env.example` / `cloud/.env.cloud.example` for the full
-  var list with comments.
+  `hash_secret.py`, issue a passphrase via the license server's admin API
+  (see `license-server/README.md`), then activate it from **Admin ->
+  License** in the cloud frontend — no need to put it in an env var at all
+  unless you want it pre-seeded before first login. See `.env.example` /
+  `cloud/.env.cloud.example` for the full var list with comments.
 - To enable update-checking on a station: Settings -> "Check for software
   updates" (off by default), then wire up the recurring check per
   `updater/README.md`.
@@ -156,7 +173,7 @@ Per your answer: auto-check every N days (default 7), `git pull` +
 ## Suggested build-order status
 
 1. ~~Split Local Instance / Cloud Utility~~ — already separable, confirmed.
-2. License server (Annual + Unlimited) — done.
+2. License server (simple passphrase + redemption model) — done.
 3. Cloud Utility gating + 45-day degrade — done.
 4. Update-manifest / check endpoint — simplified per section 3's
    deviations above (no separate manifest endpoint; the updater compares

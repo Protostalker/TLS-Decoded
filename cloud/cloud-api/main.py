@@ -113,7 +113,6 @@ def _migrate_schema() -> None:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS cloud_license_state (
                 id INTEGER PRIMARY KEY,
-                license_type TEXT,
                 customer_name TEXT,
                 station_scope TEXT,
                 status TEXT NOT NULL DEFAULT 'unconfigured',
@@ -126,9 +125,14 @@ def _migrate_schema() -> None:
                 updated_at TIMESTAMPTZ
             )
         """))
-        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_type TEXT"))
-        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_annual_key TEXT"))
-        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_unlimited_file TEXT"))
+        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_passphrase TEXT"))
+        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS instance_id TEXT"))
+        # Columns from an earlier (JWT/signing-key based) design, now unused
+        # — left in place rather than dropped (harmless orphan columns,
+        # avoids a DROP COLUMN migration for something with no ORM mapping
+        # anymore anyway). Safe to manually drop later if you want a clean
+        # schema: license_type, configured_type, configured_annual_key,
+        # configured_unlimited_file.
 
 
 def _bootstrap_admin() -> None:

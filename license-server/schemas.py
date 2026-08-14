@@ -8,67 +8,46 @@ from pydantic import BaseModel
 # ── Phone-home (Cloud Utility -> license server) ─────────────────────────────
 
 class LicenseCheckRequest(BaseModel):
-    license_key: str
+    passphrase: str
+    instance_id: str  # random token the Cloud Utility generates once and persists
 
 
 class LicenseCheckResponse(BaseModel):
-    status: str  # "valid" | "invalid" | "grace"
+    status: str  # "valid" | "invalid"
     customer_name: Optional[str] = None
     station_scope: Optional[str] = None
     expires_at: Optional[datetime] = None
-    renewed_at: Optional[datetime] = None
     detail: Optional[str] = None
 
 
-# ── Admin: Annual licenses ───────────────────────────────────────────────────
+# ── Admin ─────────────────────────────────────────────────────────────────────
 
-class AnnualLicenseCreate(BaseModel):
+class LicenseCreate(BaseModel):
+    passphrase: str          # you choose the text — this isn't self-serve
     customer_name: str
     station_scope: Optional[str] = None
-    valid_days: int = 365
+    max_uses: Optional[int] = 1     # None = unlimited
+    valid_days: Optional[int] = 365  # None = never expires
 
 
-class AnnualLicenseOut(BaseModel):
+class LicenseOut(BaseModel):
     id: int
-    key_hint: str
+    passphrase: str
     customer_name: str
     station_scope: Optional[str] = None
+    max_uses: Optional[int] = None
+    use_count: int
     status: str
+    is_master: bool
     issued_at: datetime
-    expires_at: datetime
-    renewed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    first_redeemed_at: Optional[datetime] = None
     last_checked_at: Optional[datetime] = None
 
 
-class AnnualLicenseIssuedOut(AnnualLicenseOut):
-    """Only ever returned once — at issuance — same posture as station device
-    credentials in the main app (StationCredentialOut)."""
-    license_key: str
-
-
-class AnnualLicenseRenew(BaseModel):
+class LicenseRenew(BaseModel):
     extend_days: int = 365
 
 
-class AnnualLicenseStatusUpdate(BaseModel):
+class LicenseStatusUpdate(BaseModel):
     status: str  # "active" | "suspended"
-
-
-# ── Admin: Unlimited licenses ─────────────────────────────────────────────────
-
-class UnlimitedLicenseCreate(BaseModel):
-    customer_name: str
-    station_scope: Optional[str] = None
-
-
-class UnlimitedLicenseOut(BaseModel):
-    id: int
-    jti: str
-    customer_name: str
-    station_scope: Optional[str] = None
-    issued_at: datetime
-    revoked: bool
-
-
-class UnlimitedLicenseIssuedOut(UnlimitedLicenseOut):
-    license_file: str  # the signed JWT — deliver this to the customer; never stored server-side

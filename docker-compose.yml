@@ -18,9 +18,9 @@
 #   station-core   db, api, poller, sync   — the station's own data pipeline
 #   station-ui     frontend                 — the station's local dashboard
 #   cloud          cloud-db, cloud-api, cloud-frontend — the cloud hub
-#   license        license-server           — Annual/Unlimited licensing for
-#                                              the cloud hub (never talks to
-#                                              a station) — see license-server/README.md
+#   license        license-server           — passphrase licensing for the
+#                                              cloud hub (never talks to a
+#                                              station) — see license-server/README.md
 #
 # Deployment modes:
 #   Local station only      → COMPOSE_PROFILES=station-core,station-ui
@@ -192,20 +192,15 @@ services:
       ADMIN_EMAIL: ${CLOUD_ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${CLOUD_ADMIN_PASSWORD:-}
       # Licensing (Cloud Utility only — see license-server/README.md and
-      # cloud/cloud-api/licensing.py). CLOUD_LICENSE_TYPE unset/blank means
-      # "unconfigured" — the app runs but /api/license/status reports that,
-      # and degraded-mode gating never triggers (no annual key to fail
-      # checking on). Leave everything below blank for local dev.
-      CLOUD_LICENSE_TYPE: ${CLOUD_LICENSE_TYPE:-}
-      # Annual:
+      # cloud/cloud-api/licensing.py). One passphrase, always phoned home to
+      # the license server — no signing keys, no license files. Blank
+      # CLOUD_LICENSE_KEY means "unconfigured" until an admin activates one
+      # from Admin -> License in the cloud frontend; this var only seeds the
+      # very first boot with an empty DB. Leave blank for local dev.
       CLOUD_LICENSE_KEY: ${CLOUD_LICENSE_KEY:-}
       LICENSE_SERVER_URL: ${LICENSE_SERVER_URL:-http://license-server:8000}
       LICENSE_CHECK_INTERVAL_HOURS: ${LICENSE_CHECK_INTERVAL_HOURS:-24}
       LICENSE_GRACE_DAYS: ${LICENSE_GRACE_DAYS:-45}
-      # Unlimited (either or both — file path wins if both point somewhere valid):
-      CLOUD_LICENSE_FILE: ${CLOUD_LICENSE_FILE:-}
-      CLOUD_LICENSE_FILE_PATH: ${CLOUD_LICENSE_FILE_PATH:-}
-      LICENSE_SIGNING_PUBLIC_KEY: ${LICENSE_SIGNING_PUBLIC_KEY:-}
     ports:
       - "${CLOUD_API_PORT:-8100}:8000"
     restart: unless-stopped
@@ -231,9 +226,9 @@ services:
   # ("a new small service"); not split into its own repo yet (per Raffi's
   # "develop everything together for now" note), but already independently
   # deployable — this is what actually matters for the eventual split. Only
-  # the Cloud Utility ever talks to this; the Local Instance never does. See
-  # license-server/README.md for the admin API (issuing Annual/Unlimited
-  # licenses) and key-management notes.
+  # the Cloud Utility ever talks to this; the Local Instance never does. A
+  # database of hand-issued, use-limited passphrases — see
+  # license-server/README.md for the admin API and key-management notes.
   #
   # Run it alongside "cloud" on the same box during the prototype phase
   # (COMPOSE_PROFILES=cloud,license), or point LICENSE_SERVER_URL at a
@@ -245,10 +240,12 @@ services:
     build: ./license-server
     profiles: ["license"]
     environment:
-      # Hashes, not plaintext — see license-server/README.md's Key
-      # management section and license-server/hash_secret.py.
+      # Hash, not plaintext — see license-server/README.md's Key management
+      # section and license-server/hash_secret.py.
       LICENSE_SERVER_ADMIN_TOKEN_HASH: ${LICENSE_SERVER_ADMIN_TOKEN_HASH:-}
-      UNLIMITED_LICENSE_PASSPHRASE_HASH: ${UNLIMITED_LICENSE_PASSPHRASE_HASH:-}
+      # Optional override for the auto-seeded master passphrase (default
+      # "PermissionGranted200" if unset) — unlimited uses, never expires.
+      MASTER_PASSPHRASE: ${MASTER_PASSPHRASE:-}
     volumes:
       - license_data:/data
     ports:
