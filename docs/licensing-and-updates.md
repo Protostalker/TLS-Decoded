@@ -55,11 +55,39 @@ gated at all, so new data keeps landing during a lapse, per spec.
 
 **Key management, per your answer:** the license server holds the RSA
 signing key (auto-generated + persisted to a mounted volume on first boot —
-see `license-server/keys.py`). `LICENSE_SERVER_ADMIN_TOKEN` gates all
+see `license-server/keys.py`). `LICENSE_SERVER_ADMIN_TOKEN_HASH` gates all
 `/admin/*` routes on the license server. Unlimited license issuance
-additionally requires `X-Unlimited-Passphrase`, default
-`PermissionGranted200` as you specified — override via
-`UNLIMITED_LICENSE_PASSPHRASE` for anything beyond dev/testing.
+additionally requires `X-Unlimited-Passphrase`, checked against
+`UNLIMITED_LICENSE_PASSPHRASE_HASH` — `PermissionGranted200` as you
+specified is the dev-only fallback if that's unset.
+
+**Update since the first pass — secrets are now hashed, not plaintext.**
+Both `LICENSE_SERVER_ADMIN_TOKEN` and `UNLIMITED_LICENSE_PASSPHRASE`
+originally sat in `.env`/`.env.cloud` as plaintext. They're now
+`_HASH` env vars instead (SHA-256 for the admin token, bcrypt for the
+human-chosen passphrase — see `license-server/auth.py`'s module docstring
+for why those differ) — the actual secret is never stored anywhere,
+`.env`/`docker inspect`/a backup of either file only ever exposes something
+an incoming request's hash can be checked against, never the secret
+itself. Run `python3 license-server/hash_secret.py --type admin-token` (or
+`--type passphrase`) once to turn your chosen secret into the value that
+goes in the env file.
+
+**Update since the first pass — license activation moved into the UI.**
+`CLOUD_LICENSE_TYPE`/`CLOUD_LICENSE_KEY`/`CLOUD_LICENSE_FILE` are now an
+initial-deployment convenience only: they seed `CloudLicenseState` exactly
+once, on a brand new deployment with an empty database
+(`licensing._seed_from_env_once`). From then on, activating a license,
+renewing with a new Annual key, switching to Unlimited, or clearing the
+configured license entirely is done from **Admin -> License** in the cloud
+frontend — paste the key or license file, no env edits or restart. Both
+paths validate before persisting (phone home for Annual, verify the
+signature for Unlimited) so a bad paste fails immediately with a clear
+error instead of silently starting a 45-day degrade clock. Deployment-level
+settings that describe *how this instance is wired up* rather than *which
+license it holds* — `LICENSE_SERVER_URL`, `LICENSE_SIGNING_PUBLIC_KEY`,
+`LICENSE_GRACE_DAYS`, `LICENSE_CHECK_INTERVAL_HOURS` — stay env-only; there's
+no reasonable "submit this in a form" story for those.
 
 ## 3. Update mechanism (Local Instance, opt-in)
 
@@ -113,12 +141,14 @@ Per your answer: auto-check every N days (default 7), `git pull` +
 - **Nothing is required for local dev.** `CLOUD_LICENSE_TYPE` unset means
   the Cloud Utility runs "unconfigured" — no gating triggers.
 - To license a real Cloud Utility deployment: stand up `license-server`
-  (profile `license`), set `LICENSE_SERVER_ADMIN_TOKEN`, issue a license via
-  its admin API (see `license-server/README.md`), then set
-  `CLOUD_LICENSE_TYPE` + `CLOUD_LICENSE_KEY` (Annual) or
-  `CLOUD_LICENSE_FILE`/`CLOUD_LICENSE_FILE_PATH` + `LICENSE_SIGNING_PUBLIC_KEY`
-  (Unlimited) on `cloud-api`. See `.env.example` / `cloud/.env.cloud.example`
-  for the full var list with comments.
+  (profile `license`), generate + set `LICENSE_SERVER_ADMIN_TOKEN_HASH` via
+  `hash_secret.py`, set `LICENSE_SIGNING_PUBLIC_KEY` on `cloud-api` (fetch it
+  from the license server's `GET /license/public-key`), issue a license via
+  the license server's admin API (see `license-server/README.md`), then
+  activate it from **Admin -> License** in the cloud frontend — no need to
+  put the key/file in env vars at all unless you want it pre-seeded before
+  first login. See `.env.example` / `cloud/.env.cloud.example` for the full
+  var list with comments.
 - To enable update-checking on a station: Settings -> "Check for software
   updates" (off by default), then wire up the recurring check per
   `updater/README.md`.

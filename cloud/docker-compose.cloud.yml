@@ -83,8 +83,10 @@ services:
   license-server:
     build: ../license-server
     environment:
-      LICENSE_SERVER_ADMIN_TOKEN: ${LICENSE_SERVER_ADMIN_TOKEN:-}
-      UNLIMITED_LICENSE_PASSPHRASE: ${UNLIMITED_LICENSE_PASSPHRASE:-PermissionGranted200}
+      # Hashes, not plaintext — see ../license-server/README.md's Key
+      # management section and ../license-server/hash_secret.py.
+      LICENSE_SERVER_ADMIN_TOKEN_HASH: ${LICENSE_SERVER_ADMIN_TOKEN_HASH:-}
+      UNLIMITED_LICENSE_PASSPHRASE_HASH: ${UNLIMITED_LICENSE_PASSPHRASE_HASH:-}
     volumes:
       - license_data:/data
     ports:

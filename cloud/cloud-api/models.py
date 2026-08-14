@@ -309,6 +309,24 @@ class CloudLicenseState(Base):
     __tablename__ = "cloud_license_state"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # What's actually CONFIGURED — set either by env vars at first boot
+    # (initial-deployment convenience only) or, from then on, by an admin
+    # via Admin -> License in the cloud frontend (routers/license.py's
+    # activate/deactivate endpoints). Once this is set via the UI, env vars
+    # are never consulted again — see licensing.py's _seed_from_env_once().
+    # configured_annual_key is stored as entered (plaintext in this table),
+    # the same way cloud_sync_device_secret is stored in the station's own
+    # settings table — it's a credential this service must re-present
+    # as-is on every phone-home call, not a password being verified against
+    # a hash. configured_unlimited_file has no confidentiality requirement
+    # at all (it's a signed-but-unencrypted JWT, verified fresh each check).
+    configured_type: Mapped[str | None] = mapped_column(Text)  # "annual" | "unlimited" | None
+    configured_annual_key: Mapped[str | None] = mapped_column(Text)
+    configured_unlimited_file: Mapped[str | None] = mapped_column(Text)
+
+    # What the last check EVALUATED to — derived from the configured_*
+    # fields above by licensing.run_license_check().
     license_type: Mapped[str | None] = mapped_column(Text)   # "annual" | "unlimited" | None (unconfigured)
     customer_name: Mapped[str | None] = mapped_column(Text)
     station_scope: Mapped[str | None] = mapped_column(Text)

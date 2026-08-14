@@ -22,7 +22,7 @@ which is what actually matters for the eventual split.
   Cloud Utility that might activate an Unlimited license.
 - `GET /health`
 
-### Admin (`X-Admin-Token: <LICENSE_SERVER_ADMIN_TOKEN>`)
+### Admin (`X-Admin-Token: <your admin token>`)
 
 - `GET /admin/licenses/annual` — list.
 - `POST /admin/licenses/annual` — issue. Body: `{"customer_name", "station_scope"?, "valid_days"? (default 365)}`.
@@ -31,11 +31,11 @@ which is what actually matters for the eventual split.
 - `POST /admin/licenses/annual/{id}/status` — Body: `{"status": "active" | "suspended"}`.
 - `GET /admin/licenses/unlimited` — list (issuance log only — file itself isn't stored server-side).
 - `POST /admin/licenses/unlimited` — **additionally requires** `X-Unlimited-Passphrase`
-  (default `PermissionGranted200`, override via `UNLIMITED_LICENSE_PASSPHRASE`).
+  (your chosen passphrase — see Key management below for how it's stored).
   Body: `{"customer_name", "station_scope"?}`. Response includes `license_file` — a
-  signed JWT with no `exp` claim — deliver it to the customer as a file
-  (`unlimited-license.jwt` or similar) for them to paste/upload into their
-  Cloud Utility's license settings once, at activation.
+  signed JWT with no `exp` claim — deliver it to the customer to paste into their
+  Cloud Utility's Admin -> License page (or, at initial deployment only, set via
+  `CLOUD_LICENSE_FILE`/`CLOUD_LICENSE_FILE_PATH` — see the Cloud Utility's env example).
 
 ## Example: issue an Annual license
 
@@ -51,10 +51,14 @@ curl -X POST http://localhost:8200/admin/licenses/annual \
 ```bash
 curl -X POST http://localhost:8200/admin/licenses/unlimited \
   -H "X-Admin-Token: $LICENSE_SERVER_ADMIN_TOKEN" \
-  -H "X-Unlimited-Passphrase: PermissionGranted200" \
+  -H "X-Unlimited-Passphrase: $UNLIMITED_LICENSE_PASSPHRASE" \
   -H "Content-Type: application/json" \
   -d '{"customer_name": "Example Fuel Co"}'
 ```
+
+(`$LICENSE_SERVER_ADMIN_TOKEN` / `$UNLIMITED_LICENSE_PASSPHRASE` here are the
+*plaintext* secrets you chose — export them in your own shell before running
+these, they are never stored in plaintext on the server itself; see below.)
 
 ## Key management
 
@@ -71,11 +75,23 @@ curl -X POST http://localhost:8200/admin/licenses/unlimited \
   deliberately no revocation channel for Unlimited licenses (no phone-home,
   by design), so treat a rotation as "new key for new licenses," not as
   invalidating old ones, unless you also push a new public key everywhere.
-- `LICENSE_SERVER_ADMIN_TOKEN` — gates all `/admin/*` routes. Required; the
-  service returns 503 on admin routes if it isn't set (fails loud, not open).
-- `UNLIMITED_LICENSE_PASSPHRASE` — gates Unlimited issuance specifically, on
-  top of the admin token. Defaults to `PermissionGranted200` per Raffi's
-  answer in the dev handoff doc; override for anything beyond initial dev/testing.
+- `LICENSE_SERVER_ADMIN_TOKEN_HASH` — gates all `/admin/*` routes. Required;
+  the service returns 503 on admin routes if it isn't set (fails loud, not
+  open). This is a **hash** (SHA-256) of your admin token, not the token
+  itself — generate it with `python3 hash_secret.py --type admin-token`.
+  The plaintext token only ever exists in your own hands (put it in a
+  password manager) and in the `X-Admin-Token` header on each request.
+- `UNLIMITED_LICENSE_PASSPHRASE_HASH` — gates Unlimited issuance
+  specifically, on top of the admin token. Also a **hash** (bcrypt, since
+  this is a human-chosen phrase rather than a random token) — generate it
+  with `python3 hash_secret.py --type passphrase`. Leaving this unset falls
+  back to a hash of the dev default (`PermissionGranted200`, per Raffi's
+  original answer) — fine for local dev, since that phrase is already
+  public (it's in this repo's history); set your own before issuing a real
+  license. Neither `.env`/`.env.cloud` nor `docker inspect` ever expose a
+  usable plaintext secret — only something an incoming header's hash can be
+  checked against. See `hash_secret.py` and `auth.py`'s module docstring
+  for the full reasoning.
 
 ## Storage
 

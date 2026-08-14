@@ -567,10 +567,14 @@ const STATUS_COLOR = {
 
 function LicenseTab() {
   const [status, setStatus] = useState(null)
+  const [config, setConfig] = useState(null)
   const [error, setError] = useState(null)
   const [rechecking, setRechecking] = useState(false)
 
-  const load = () => { api.license.status().then(setStatus).catch(e => setError(e.message)) }
+  const load = () => {
+    api.license.status().then(setStatus).catch(e => setError(e.message))
+    api.license.config().then(setConfig).catch(() => {})
+  }
   useEffect(load, [])
 
   const recheck = async () => {
@@ -613,8 +617,8 @@ function LicenseTab() {
             color: '#fecaca', fontSize: 13,
           }}>
             Degraded mode — only admins can see data right now. Non-admin users and suppliers see nothing until this
-            is resolved. Renew the license (or check network access to the license server), then click "Re-check now" —
-            full functionality returns immediately, no data is lost.
+            is resolved. Activate a valid license below, then click "Re-check now" — full functionality returns
+            immediately, no data is lost.
           </div>
         )}
         {status.status === 'grace' && (
@@ -638,6 +642,118 @@ function LicenseTab() {
           </tbody>
         </table>
       </div>
+
+      <LicenseActivationCard config={config} onChanged={load} />
+    </div>
+  )
+}
+
+// Submit/replace/clear the actual license credential from here — env vars
+// (CLOUD_LICENSE_TYPE/KEY/FILE) only ever seed this once, on a brand new
+// deployment with an empty database; every change after that (activating,
+// renewing with a new key, switching license types) goes through this form.
+function LicenseActivationCard({ config, onChanged }) {
+  const [mode, setMode] = useState('annual')
+  const [annualKey, setAnnualKey] = useState('')
+  const [unlimitedFile, setUnlimitedFile] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  const activate = async (e) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setMsg(null)
+    try {
+      if (mode === 'annual') {
+        await api.license.activateAnnual(annualKey.trim())
+        setAnnualKey('')
+      } else {
+        await api.license.activateUnlimited(unlimitedFile.trim())
+        setUnlimitedFile('')
+      }
+      setMsg({ type: 'ok', text: 'License activated.' })
+      onChanged()
+    } catch (e) { setMsg({ type: 'error', text: e.message }) }
+    finally { setSubmitting(false) }
+  }
+
+  const deactivate = async () => {
+    if (!confirm('Clear the configured license? This account goes back to "unconfigured" until a new one is activated.')) return
+    setSubmitting(true)
+    setMsg(null)
+    try {
+      await api.license.deactivate()
+      setMsg({ type: 'ok', text: 'License cleared.' })
+      onChanged()
+    } catch (e) { setMsg({ type: 'error', text: e.message }) }
+    finally { setSubmitting(false) }
+  }
+
+  const onFilePicked = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUnlimitedFile((await file.text()).trim())
+  }
+
+  return (
+    <div style={card}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+        {config?.configured_type ? 'Replace license' : 'Activate a license'}
+      </div>
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+        {config?.configured_type === 'annual' && `Currently configured: Annual key ending …${config.annual_key_hint || '????'}.`}
+        {config?.configured_type === 'unlimited' && 'Currently configured: Unlimited license file present.'}
+        {!config?.configured_type && 'No license configured yet.'}
+        {' '}Paste a new one below to activate or replace it — no env var edits or restart needed. Env vars
+        only seed this once, on a fresh deployment.
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <button type="button" onClick={() => setMode('annual')} style={mode === 'annual' ? btn : btnGhost}>Annual</button>
+        <button type="button" onClick={() => setMode('unlimited')} style={mode === 'unlimited' ? btn : btnGhost}>Unlimited</button>
+      </div>
+
+      <form onSubmit={activate}>
+        {mode === 'annual' ? (
+          <Field label="Annual license key">
+            <input
+              required value={annualKey} onChange={e => setAnnualKey(e.target.value)}
+              placeholder="tlsfp-…" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace' }}
+            />
+          </Field>
+        ) : (
+          <Field label="Unlimited license file (paste the JWT, or upload the file)">
+            <textarea
+              required value={unlimitedFile} onChange={e => setUnlimitedFile(e.target.value)}
+              placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9…"
+              rows={4}
+              style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', resize: 'vertical' }}
+            />
+            <input type="file" accept=".jwt,.txt,text/plain" onChange={onFilePicked} style={{ marginTop: 6, fontSize: 12 }} />
+          </Field>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button type="submit" disabled={submitting} style={btn}>
+            {submitting ? 'Activating…' : 'Activate'}
+          </button>
+          {config?.configured_type && (
+            <button type="button" onClick={deactivate} disabled={submitting} style={btnGhost}>
+              Clear configured license
+            </button>
+          )}
+        </div>
+      </form>
+
+      {msg && (
+        <div style={{
+          marginTop: 10, fontSize: 12, padding: '8px 10px', borderRadius: 7,
+          background: msg.type === 'ok' ? '#052e16' : '#450a0a',
+          color: msg.type === 'ok' ? '#86efac' : '#fca5a5',
+        }}>
+          {msg.text}
+        </div>
+      )}
     </div>
   )
 }

@@ -82,6 +82,12 @@ export const api = {
     banner: () => request('/license/banner'),
     status: () => request('/license/status'),
     recheck: () => request('/license/recheck', { method: 'POST' }),
+    config: () => request('/license/config'),
+    activateAnnual: (licenseKey) =>
+      request('/license/activate/annual', { method: 'POST', body: JSON.stringify({ license_key: licenseKey }) }),
+    activateUnlimited: (licenseFile) =>
+      request('/license/activate/unlimited', { method: 'POST', body: JSON.stringify({ license_file: licenseFile }) }),
+    deactivate: () => request('/license/deactivate', { method: 'POST' }),
   },
 
   // ── Web Push ──

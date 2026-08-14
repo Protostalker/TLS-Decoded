@@ -126,6 +126,9 @@ def _migrate_schema() -> None:
                 updated_at TIMESTAMPTZ
             )
         """))
+        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_type TEXT"))
+        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_annual_key TEXT"))
+        conn.execute(text("ALTER TABLE cloud_license_state ADD COLUMN IF NOT EXISTS configured_unlimited_file TEXT"))
 
 
 def _bootstrap_admin() -> None:
