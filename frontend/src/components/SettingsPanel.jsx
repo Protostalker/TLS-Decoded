@@ -121,6 +121,13 @@ export default function SettingsPanel({ open, onClose }) {
   const [gradeAssignments, setGradeAssignments] = useState({})
   const [savingGrades, setSavingGrades] = useState(false)
 
+  // Software updates — off by default, fully independent of everything else
+  // on this panel (and of any license, since the Local Instance never has
+  // one). See updater/README.md for what actually reads these settings.
+  const [updateCheckEnabled, setUpdateCheckEnabled] = useState(false)
+  const [updateCheckIntervalDays, setUpdateCheckIntervalDays] = useState(7)
+  const [checkingNow, setCheckingNow] = useState(false)
+
   // Tax rate — applied automatically to every new price entry (manual or
   // Commander-synced) unless overridden per-entry. Same live-settings
   // pattern as everything else on this panel.
@@ -154,6 +161,8 @@ export default function SettingsPanel({ open, onClose }) {
       setCommanderUrl(s.commander_reader_url)
       setCommanderTier(s.commander_price_tier)
       setCommanderInterval(s.commander_sync_interval_minutes)
+      setUpdateCheckEnabled(s.update_check_enabled)
+      setUpdateCheckIntervalDays(s.update_check_interval_days)
       setTaxRate(s.default_tax_rate_percent ?? '')
       setBrandPreset(s.brand_preset)
       setBrandPrimary(s.brand_primary_color)
@@ -260,6 +269,29 @@ export default function SettingsPanel({ open, onClose }) {
       setStatus({ type: 'error', msg: e.message })
     } finally {
       setTestingCommander(false)
+    }
+  }
+
+  const saveUpdateChecking = () => save({
+    update_check_enabled: updateCheckEnabled,
+    update_check_interval_days: updateCheckIntervalDays,
+  }, updateCheckEnabled
+    ? 'Update checking enabled — see updater/README.md to wire up the recurring check (hourly cron/Task Scheduler entry).'
+    : 'Update checking disabled.')
+
+  const handleCheckForUpdatesNow = async () => {
+    setCheckingNow(true); setStatus(null)
+    try {
+      const r = await api.checkForUpdatesNow()
+      setStatus(r.status === 'requested'
+        ? { type: 'ok', msg: 'Check requested — picked up on the updater’s next run (see updater/README.md for the schedule).' }
+        : { type: 'error', msg: r.detail || 'Enable update checking above first.' })
+      const s = await api.settings()
+      setSettings(s)
+    } catch (e) {
+      setStatus({ type: 'error', msg: e.message })
+    } finally {
+      setCheckingNow(false)
     }
   }
 
@@ -721,6 +753,69 @@ export default function SettingsPanel({ open, onClose }) {
                       {' — '}{settings.commander_last_connected ? 'connected' : (settings.commander_last_error || 'not connected')}
                     </span>
                   : <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>Never checked yet.</span>}
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
+
+            {/* Software updates — opt-in, independent of licensing (there is
+                none on this side) and of cloud sync. See updater/README.md. */}
+            <div style={row}>
+              <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={updateCheckEnabled}
+                  onChange={e => setUpdateCheckEnabled(e.target.checked)}
+                />
+                Check for software updates
+              </label>
+              <div style={hint}>
+                Off by default. When on, a script on this station's host checks for new releases
+                (git pull + rebuild) on the interval below — see updater/README.md for how to wire
+                up the recurring check. Fully independent of Cloud sync and of any Cloud Utility
+                license: this station can opt into free updates whether or not it's connected to a
+                cloud hub at all.
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Check interval (days)</div>
+                <input
+                  type="number" min={1} max={90}
+                  value={updateCheckIntervalDays}
+                  onChange={e => setUpdateCheckIntervalDays(Number(e.target.value))}
+                  style={inputStyle}
+                />
+              </div>
+
+              <button
+                disabled={saving}
+                style={{ ...btn(true), width: '100%', marginTop: 10 }}
+                onClick={saveUpdateChecking}
+              >
+                Save update-check settings
+              </button>
+
+              <button
+                disabled={checkingNow || !updateCheckEnabled}
+                style={{ ...btn(false), width: '100%', marginTop: 8 }}
+                onClick={handleCheckForUpdatesNow}
+                title={!updateCheckEnabled ? 'Enable update checking above first' : undefined}
+              >
+                {checkingNow ? 'Requesting…' : '⚡ Check for updates now'}
+              </button>
+
+              <div style={{ marginTop: 10, fontSize: 11, color: 'var(--brand-text-dim, #94a3b8)' }}>
+                {settings.update_current_ref && <div>Running: <code style={{ fontFamily: 'monospace' }}>{settings.update_current_ref}</code></div>}
+                <div>
+                  Last checked: {settings.update_last_checked_at
+                    ? formatDistanceToNow(parseISO(settings.update_last_checked_at), { addSuffix: true })
+                    : 'never'}
+                  {settings.update_last_result ? ` — ${settings.update_last_result}` : ''}
+                </div>
+                {settings.update_last_applied_at && (
+                  <div>Last updated: {formatDistanceToNow(parseISO(settings.update_last_applied_at), { addSuffix: true })}</div>
+                )}
+                {settings.update_check_pending && <div style={{ color: '#fde68a' }}>A check is queued for the updater's next run.</div>}
               </div>
             </div>
 

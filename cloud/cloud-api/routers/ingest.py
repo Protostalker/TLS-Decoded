@@ -236,3 +236,30 @@ def ack_price_update(update_id: int, db: Session = Depends(get_db), station: Sta
     row.applied_at = datetime.now(tz=timezone.utc)
     db.commit()
     return {"ok": True}
+
+
+# ── Cloud-triggered "check for updates now" (Update mechanism, section 3) ───
+#
+# Same pull-only shape as price updates above: an admin clicking "check for
+# updates" in the Cloud Utility (routers/admin.py's request_update_check)
+# only sets a timestamp on this station's row. It's the station's own sync
+# container — already polling on its regular tick, device-credential auth,
+# never inbound — that notices the flag and turns it into a local
+# out-of-cycle check (see sync/main.py's apply_pending_update_check_request
+# and api/routers/settings.py's update_check_requested_at setting). This
+# keeps the "Local Instance never accepts inbound connections" property
+# intact even for a cloud-initiated update check.
+
+@router.get("/ingest/update-check-request")
+def update_check_request(db: Session = Depends(get_db), station: Station = Depends(verify_device)):
+    requested = station.update_check_requested_at
+    acked = station.update_check_acked_at
+    pending = bool(requested and (not acked or requested > acked))
+    return {"pending": pending, "requested_at": requested if pending else None}
+
+
+@router.post("/ingest/update-check-request/ack")
+def ack_update_check_request(db: Session = Depends(get_db), station: Station = Depends(verify_device)):
+    station.update_check_acked_at = datetime.now(tz=timezone.utc)
+    db.commit()
+    return {"ok": True}

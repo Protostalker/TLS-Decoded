@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { api } from '../api/client.js'
 import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
@@ -42,8 +42,11 @@ export default function StationsPage() {
   const [weather, setWeather] = useState(null)
   const [error, setError] = useState(null)
 
+  // Suppliers have their own dedicated dashboard — redirect immediately.
+  // All hooks are declared above so this early return doesn't violate rules.
   useEffect(() => {
-    (async () => {
+    if (isSupplier) return
+    ;(async () => {
       try {
         const [s, sum] = await Promise.all([api.myStations(), api.combinedStats()])
         setStations(s)
@@ -55,7 +58,9 @@ export default function StationsPage() {
       // with no zip set shouldn't block the rest of the hub from loading.
       api.weatherSummary().then(setWeather).catch(() => setWeather({}))
     })()
-  }, [])
+  }, [isSupplier])
+
+  if (isSupplier) return <Navigate to="/supplier" replace />
 
   const stationsWithWarnings = stations && weather
     ? stations.filter(s => weather[s.id]?.top_recommendation)

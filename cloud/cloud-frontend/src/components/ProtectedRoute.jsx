@@ -17,6 +17,14 @@ export function AdminRoute({ children }) {
   return children
 }
 
+export function SupplierRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Centered>Loading…</Centered>
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'supplier' && user.role !== 'admin') return <Navigate to="/" replace />
+  return children
+}
+
 function Centered({ children }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>

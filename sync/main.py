@@ -440,6 +440,45 @@ def apply_pending_price_updates(engine: sqlalchemy.Engine, client: httpx.Client,
     return applied
 
 
+# ── Cloud-triggered "check for updates now" (Update mechanism, section 3) ───
+#
+# Same pull-only shape as price updates above, and same reasoning: an admin
+# clicking "check for updates" in the Cloud Utility only sets a flag on this
+# station's row (routers/admin.py's request_update_check). This station's
+# sync container — already polling every ~15s, device-credential auth, never
+# inbound — is what turns that into something the LOCAL updater actually
+# acts on: it just writes update_check_requested_at into the local settings
+# table (same key api/routers/settings.py's manual "Check now" button
+# writes) and acks the cloud side. It does NOT run git/docker itself — sync
+# has no docker socket access and shouldn't need one; the host-level
+# updater/check_for_updates.py script is what reads this setting on its own
+# tick and actually performs the check. Independent of licensing and
+# independent of whether cloud sync itself stays enabled going forward —
+# this only fires while sync is enabled and reachable, same as everything
+# else in this file.
+
+def apply_pending_update_check_request(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: str, headers: dict) -> bool:
+    try:
+        resp = client.get(f"{cloud_url}/ingest/update-check-request", headers=headers, timeout=15.0)
+        resp.raise_for_status()
+        result = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Could not check for a pending update-check request: %s", exc)
+        return False
+
+    if not result.get("pending"):
+        return False
+
+    try:
+        set_setting(engine, "update_check_requested_at", datetime.now(tz=timezone.utc).isoformat())
+        client.post(f"{cloud_url}/ingest/update-check-request/ack", headers=headers, timeout=15.0)
+        logger.info("Cloud requested an update check — flagged locally for the updater's next tick.")
+        return True
+    except Exception:
+        logger.exception("Failed to record/ack the cloud's update-check request — will retry next tick")
+        return False
+
+
 # ── One sync cycle ────────────────────────────────────────────────────────────
 
 def run_sync_cycle(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: str, headers: dict, batch_size: int) -> bool:
@@ -559,6 +598,7 @@ def main() -> None:
         # Checked every tick, independent of the push interval below — a
         # price update shouldn't have to wait up to 30 minutes.
         apply_pending_price_updates(engine, client, cs["url"], headers)
+        apply_pending_update_check_request(engine, client, cs["url"], headers)
 
         now = datetime.now(tz=timezone.utc)
         due = last_sync_at is None or (now - last_sync_at) >= timedelta(minutes=cs["interval_minutes"])

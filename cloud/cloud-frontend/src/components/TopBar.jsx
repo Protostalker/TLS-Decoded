@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import BrandLogo from './BrandLogo.jsx'
+import LicenseBanner from './LicenseBanner.jsx'
+import NotificationBell from './NotificationBell.jsx'
 import useIsMobile from '../hooks/useIsMobile.js'
 
 // logoDataUrl is only ever passed by StationDashboardPage (T1) — every other
@@ -20,6 +22,7 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
   }
 
   return (
+    <>
     <header style={{
       background: 'var(--brand-surface-2, #161b27)', borderBottom: '1px solid var(--brand-border-soft, #1e2130)',
       padding: '0 16px', height: 60,
@@ -46,7 +49,12 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
           {user.role === 'admin' && (
             <Link to="/admin" style={{ color: '#93c5fd', textDecoration: 'none' }}>Admin</Link>
           )}
-          <Link to="/" style={{ color: '#93c5fd', textDecoration: 'none' }}>Stations</Link>
+          {user.role === 'supplier' ? (
+            <Link to="/supplier" style={{ color: '#93c5fd', textDecoration: 'none' }}>Fuel Supply</Link>
+          ) : (
+            <Link to="/" style={{ color: '#93c5fd', textDecoration: 'none' }}>Stations</Link>
+          )}
+          {user.role !== 'supplier' && <NotificationBell />}
           <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{user.email}</span>
           <button
             onClick={handleLogout}
@@ -84,7 +92,11 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
               <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', borderBottom: '1px solid var(--brand-border-soft, #1e2130)', marginBottom: 4 }}>
                 {user.email}
               </div>
-              <MenuLink to="/" onClick={() => setMenuOpen(false)}>Stations</MenuLink>
+              {user.role === 'supplier' ? (
+                <MenuLink to="/supplier" onClick={() => setMenuOpen(false)}>Fuel Supply</MenuLink>
+              ) : (
+                <MenuLink to="/" onClick={() => setMenuOpen(false)}>Stations</MenuLink>
+              )}
               {user.role === 'admin' && (
                 <MenuLink to="/admin" onClick={() => setMenuOpen(false)}>Admin</MenuLink>
               )}
@@ -103,6 +115,8 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
         </div>
       )}
     </header>
+    <LicenseBanner />
+    </>
   )
 }
 

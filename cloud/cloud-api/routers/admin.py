@@ -66,6 +66,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
         brand_preset=s.brand_preset, brand_primary_color=s.brand_primary_color,
         brand_secondary_color=s.brand_secondary_color, brand_accent_color=s.brand_accent_color,
         brand_logo_data_url=s.brand_logo_data_url,
+        update_check_requested_at=s.update_check_requested_at, update_check_acked_at=s.update_check_acked_at,
     )
 
 
@@ -124,6 +125,31 @@ def update_station(station_id: int, body: StationUpdate, db: Session = Depends(g
             except Exception:
                 raise HTTPException(status_code=400, detail=f"'{candidate}' is not a recognized IANA timezone (e.g. America/Los_Angeles)")
         s.timezone = candidate or None
+    db.commit()
+    db.refresh(s)
+    return _station_out(db, s)
+
+
+@router.post("/admin/stations/{station_id}/request-update-check", response_model=StationOut)
+def request_update_check(station_id: int, db: Session = Depends(get_db)):
+    """
+    'Manual check' path from the Cloud Utility side (dev handoff doc,
+    section 3.3 / Raffi's open-question answer): sets a flag the station's
+    OWN sync container picks up on its next tick (device-credential auth,
+    same pull-only pattern as PendingPriceUpdate — see routers/ingest.py's
+    update_check_request endpoints) and turns into an immediate local
+    update check, instead of waiting for that station's own
+    every-N-days timer. Entirely independent of license state — update
+    checking is opt-in per station and never gated by licensing, per the
+    dev handoff doc's "must be opt-in and separate from licensing"
+    constraint. If the station has update-checking disabled locally, this
+    request is picked up but the station will still no-op on it — this
+    endpoint can't force an opt-in it doesn't have.
+    """
+    s = db.query(Station).filter(Station.id == station_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Station not found")
+    s.update_check_requested_at = datetime.now(tz=timezone.utc)
     db.commit()
     db.refresh(s)
     return _station_out(db, s)

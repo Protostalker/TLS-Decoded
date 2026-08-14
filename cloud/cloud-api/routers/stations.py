@@ -17,13 +17,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from auth import assigned_station_ids, get_current_user, require_station_access
+from auth import assigned_station_ids, get_current_user, require_not_degraded, require_station_access
 from database import get_db
 from models import CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, PendingPriceUpdate, Station, User
 from schemas import PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut, TankOut
 from weather import get_station_weather
 
-router = APIRouter()
+# Every route here serves station data to T1/T2 — gated by license state, per
+# the dev handoff doc's degraded-mode answer: non-admins lose ALL data
+# access while degraded, admins are unaffected. See auth.require_not_degraded.
+router = APIRouter(dependencies=[Depends(require_not_degraded)])
 
 
 def _station_out(db: Session, s: Station) -> StationOut:

@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Station, UserSession, User
+from models import CloudLicenseState, Station, UserSession, User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -130,6 +130,30 @@ def get_current_user(
 def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
+    return user
+
+
+# ── License-degraded gating ──────────────────────────────────────────────────
+# Per the dev handoff doc's open-question answer: in degraded mode (Annual
+# license unreachable/invalid for 45+ consecutive days), admin users keep
+# full functionality; everyone else (user/supplier roles) loses ALL data
+# visibility, not just ordering/reports. Applied as a router-level dependency
+# on stations.py/supplier.py/notifications.py/push.py — see their `router =
+# APIRouter(dependencies=[...])` lines. Historical data is never deleted;
+# this only blocks serving it to non-admins while degraded.
+
+DEGRADED_DETAIL = (
+    "This account's Cloud Utility license needs attention — data access is "
+    "limited to admins until it's resolved. Ask an admin to check Settings -> License."
+)
+
+
+def require_not_degraded(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
+    if user.role == "admin":
+        return user
+    state = db.query(CloudLicenseState).filter(CloudLicenseState.id == 1).first()
+    if state and state.status == "degraded":
+        raise HTTPException(status_code=403, detail=DEGRADED_DETAIL)
     return user
 
 

@@ -18,14 +18,20 @@
 #   station-core   db, api, poller, sync   — the station's own data pipeline
 #   station-ui     frontend                 — the station's local dashboard
 #   cloud          cloud-db, cloud-api, cloud-frontend — the cloud hub
+#   license        license-server           — Annual/Unlimited licensing for
+#                                              the cloud hub (never talks to
+#                                              a station) — see license-server/README.md
 #
 # Deployment modes:
 #   Local station only      → COMPOSE_PROFILES=station-core,station-ui
-#   Cloud hub only           → COMPOSE_PROFILES=cloud
+#   Cloud hub only           → COMPOSE_PROFILES=cloud,license
 #   Poll-sync (no local UI)  → COMPOSE_PROFILES=station-core
 #     (station data pipeline runs and pushes to a remote cloud, but nobody
 #     views this station's own local dashboard — frontend stays off)
-#   Complete / demo          → COMPOSE_PROFILES=station-core,station-ui,cloud
+#   Complete / demo          → COMPOSE_PROFILES=station-core,station-ui,cloud,license
+#
+# Software updates for the station side (git pull + rebuild) run as a
+# host-level script/cron, not a compose service — see updater/README.md.
 #
 # A service with no `profiles:` key always starts regardless of
 # COMPOSE_PROFILES — none are left that way here on purpose, so an empty/unset
@@ -185,6 +191,21 @@ services:
       # in and created a real admin, since it lives in plain text in .env.
       ADMIN_EMAIL: ${CLOUD_ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${CLOUD_ADMIN_PASSWORD:-}
+      # Licensing (Cloud Utility only — see license-server/README.md and
+      # cloud/cloud-api/licensing.py). CLOUD_LICENSE_TYPE unset/blank means
+      # "unconfigured" — the app runs but /api/license/status reports that,
+      # and degraded-mode gating never triggers (no annual key to fail
+      # checking on). Leave everything below blank for local dev.
+      CLOUD_LICENSE_TYPE: ${CLOUD_LICENSE_TYPE:-}
+      # Annual:
+      CLOUD_LICENSE_KEY: ${CLOUD_LICENSE_KEY:-}
+      LICENSE_SERVER_URL: ${LICENSE_SERVER_URL:-http://license-server:8000}
+      LICENSE_CHECK_INTERVAL_HOURS: ${LICENSE_CHECK_INTERVAL_HOURS:-24}
+      LICENSE_GRACE_DAYS: ${LICENSE_GRACE_DAYS:-45}
+      # Unlimited (either or both — file path wins if both point somewhere valid):
+      CLOUD_LICENSE_FILE: ${CLOUD_LICENSE_FILE:-}
+      CLOUD_LICENSE_FILE_PATH: ${CLOUD_LICENSE_FILE_PATH:-}
+      LICENSE_SIGNING_PUBLIC_KEY: ${LICENSE_SIGNING_PUBLIC_KEY:-}
     ports:
       - "${CLOUD_API_PORT:-8100}:8000"
     restart: unless-stopped
@@ -205,6 +226,39 @@ services:
       - cloud-api
     restart: unless-stopped
 
+  # ════════════════════════════════════════════════════════════════════════
+  # LICENSE SERVER — profile "license". Own service per the dev handoff doc
+  # ("a new small service"); not split into its own repo yet (per Raffi's
+  # "develop everything together for now" note), but already independently
+  # deployable — this is what actually matters for the eventual split. Only
+  # the Cloud Utility ever talks to this; the Local Instance never does. See
+  # license-server/README.md for the admin API (issuing Annual/Unlimited
+  # licenses) and key-management notes.
+  #
+  # Run it alongside "cloud" on the same box during the prototype phase
+  # (COMPOSE_PROFILES=cloud,license), or point LICENSE_SERVER_URL at a
+  # separately-hosted instance later and drop this profile — cloud-api only
+  # needs the URL, not this specific container.
+  # ════════════════════════════════════════════════════════════════════════
+
+  license-server:
+    build: ./license-server
+    profiles: ["license"]
+    environment:
+      LICENSE_SERVER_ADMIN_TOKEN: ${LICENSE_SERVER_ADMIN_TOKEN:-}
+      UNLIMITED_LICENSE_PASSPHRASE: ${UNLIMITED_LICENSE_PASSPHRASE:-PermissionGranted200}
+    volumes:
+      - license_data:/data
+    ports:
+      - "${LICENSE_SERVER_PORT:-8200}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
 volumes:
   pgdata:
   cloud_pgdata:
+  license_data:

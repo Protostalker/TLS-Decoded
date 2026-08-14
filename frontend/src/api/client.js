@@ -98,6 +98,8 @@ export const api = {
 
   testCommander: () => request('/settings/commander/test', { method: 'POST' }),
 
+  checkForUpdatesNow: () => request('/settings/update/check-now', { method: 'POST' }),
+
   exportUrl: (tankId, year, month) =>
     `${BASE}/tanks/${tankId}/export?year=${year}&month=${month}`,
 

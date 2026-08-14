@@ -200,6 +200,20 @@ class SettingsOut(BaseModel):
     brand_secondary_color: str
     brand_accent_color: str
     brand_logo_data_url: str
+    # Software update checking — deliberately independent of everything
+    # above and of licensing entirely (there is no license on the Local
+    # Instance to be independent of). Off by default; see
+    # updater/README.md for what actually consumes these. update_current_ref
+    # / update_last_result are written by updater/check_for_updates.py, not
+    # by this API — they're read-only from here, surfaced for the
+    # Settings -> Software Updates panel.
+    update_check_enabled: bool
+    update_check_interval_days: int
+    update_last_checked_at: Optional[datetime] = None
+    update_last_applied_at: Optional[datetime] = None
+    update_current_ref: str
+    update_last_result: str
+    update_check_pending: bool  # a check-now request is queued (button or cloud trigger), not yet picked up
 
 
 class SettingsUpdate(BaseModel):
@@ -223,6 +237,8 @@ class SettingsUpdate(BaseModel):
     brand_secondary_color: Optional[str] = None
     brand_accent_color: Optional[str] = None
     brand_logo_data_url: Optional[str] = None
+    update_check_enabled: Optional[bool] = None
+    update_check_interval_days: Optional[int] = None
 
 
 class DeviceIdOut(BaseModel):

@@ -65,6 +65,34 @@ export const api = {
     request(`/stations/${id}/tanks/${tankLocalId}/price-updates`, { method: 'POST', body: JSON.stringify(body) }),
   priceUpdates: (id) => request(`/stations/${id}/price-updates`),
 
+  // ── Supplier ──
+  supplier: {
+    stations: () => request('/supplier/stations'),
+    markOrdered: (stationId, body) =>
+      request(`/supplier/stations/${stationId}/order`, { method: 'POST', body: JSON.stringify(body) }),
+  },
+
+  // ── Notifications ──
+  notifications: () => request('/notifications'),
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
+
+  // ── License (T3 admin gets full status; everyone gets the banner) ──
+  license: {
+    banner: () => request('/license/banner'),
+    status: () => request('/license/status'),
+    recheck: () => request('/license/recheck', { method: 'POST' }),
+  },
+
+  // ── Web Push ──
+  push: {
+    vapidPublicKey: () => request('/push/vapid-public-key'),
+    subscribe: (subscriptionJson) =>
+      request('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription_json: subscriptionJson }) }),
+    unsubscribe: (subscriptionJson) =>
+      request('/push/unsubscribe', { method: 'DELETE', body: JSON.stringify({ subscription_json: subscriptionJson }) }),
+  },
+
   // ── T3: admin ──
   admin: {
     customers: () => request('/admin/customers'),
@@ -74,6 +102,7 @@ export const api = {
     createStation: (body) => request('/admin/stations', { method: 'POST', body: JSON.stringify(body) }),
     updateStation: (id, body) => request(`/admin/stations/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     rotateCredential: (id) => request(`/admin/stations/${id}/rotate-credential`, { method: 'POST' }),
+    requestUpdateCheck: (id) => request(`/admin/stations/${id}/request-update-check`, { method: 'POST' }),
 
     users: () => request('/admin/users'),
     createUser: (body) => request('/admin/users', { method: 'POST', body: JSON.stringify(body) }),

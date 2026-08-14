@@ -141,6 +141,8 @@ class StationOut(BaseModel):
     brand_secondary_color: Optional[str] = None
     brand_accent_color: Optional[str] = None
     brand_logo_data_url: Optional[str] = None
+    update_check_requested_at: Optional[datetime] = None
+    update_check_acked_at: Optional[datetime] = None
 
 
 class StationCreate(BaseModel):
@@ -215,6 +217,16 @@ class AssignmentCreate(BaseModel):
 class SetPasswordRequest(BaseModel):
     """Admin-only — set a user's password without knowing the old one."""
     password: str
+
+
+class FuelOrderRequest(BaseModel):
+    """Supplier marks fuel as ordered for a station; ETA is free-text, optional."""
+    eta_note: Optional[str] = None
+
+
+class PushSubscribeRequest(BaseModel):
+    """Serialised browser PushSubscription JSON, posted after the user grants permission."""
+    subscription_json: str
 
 
 # ── T1 (station-scoped, mirrors local api/schemas.py) ────────────────────────

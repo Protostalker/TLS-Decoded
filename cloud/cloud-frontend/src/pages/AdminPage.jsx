@@ -4,7 +4,7 @@ import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import Footer from '../components/Footer.jsx'
 
-const TABS = ['Customers', 'Stations', 'Users']
+const TABS = ['Customers', 'Stations', 'Users', 'License']
 
 export default function AdminPage() {
   const [tab, setTab] = useState('Customers')
@@ -26,6 +26,7 @@ export default function AdminPage() {
         {tab === 'Customers' && <CustomersTab />}
         {tab === 'Stations' && <StationsTab />}
         {tab === 'Users' && <UsersTab />}
+        {tab === 'License' && <LicenseTab />}
       </main>
       <Footer />
     </div>
@@ -161,6 +162,16 @@ function StationsTab() {
     load()
   }
 
+  const [checkRequested, setCheckRequested] = useState({})
+  const requestUpdateCheck = async (id) => {
+    setError(null)
+    try {
+      await api.admin.requestUpdateCheck(id)
+      setCheckRequested(prev => ({ ...prev, [id]: true }))
+      load()
+    } catch (e) { setError(e.message) }
+  }
+
   return (
     <div>
       <form onSubmit={create} style={{ ...card, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -227,9 +238,17 @@ function StationsTab() {
                   <td style={td}><TimezoneEditor station={s} onSave={saveTimezone} /></td>
                   <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
                   <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>inactive</span>}</td>
-                  <td style={{ ...td, display: 'flex', gap: 6 }}>
+                  <td style={{ ...td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => rotate(s.id)} style={btnGhost}>Rotate credential</button>
                     <button onClick={() => toggleActive(s)} style={btnGhost}>{s.active ? 'Deactivate' : 'Activate'}</button>
+                    <button
+                      onClick={() => requestUpdateCheck(s.id)}
+                      disabled={!!checkRequested[s.id]}
+                      title="Only takes effect if this station has 'Check for software updates' enabled locally — see its own Settings page."
+                      style={btnGhost}
+                    >
+                      {checkRequested[s.id] ? 'Update check requested' : 'Check for updates'}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -535,6 +554,102 @@ function UserDetail({ user, stations, onChange }) {
 }
 
 // ── Shared bits ───────────────────────────────────────────────────────────
+
+// ── License ───────────────────────────────────────────────────────────────
+//
+// Admin-only page per the dev handoff doc's open-question answer: "admin
+// users will also have access to a license page, where it says when they
+// applied the license, and when it expires, and if they are in grace mode."
+
+const STATUS_COLOR = {
+  active: '#86efac', grace: '#fde68a', degraded: '#fca5a5', unconfigured: '#64748b',
+}
+
+function LicenseTab() {
+  const [status, setStatus] = useState(null)
+  const [error, setError] = useState(null)
+  const [rechecking, setRechecking] = useState(false)
+
+  const load = () => { api.license.status().then(setStatus).catch(e => setError(e.message)) }
+  useEffect(load, [])
+
+  const recheck = async () => {
+    setRechecking(true)
+    setError(null)
+    try {
+      const s = await api.license.recheck()
+      setStatus(s)
+    } catch (e) { setError(e.message) }
+    finally { setRechecking(false) }
+  }
+
+  if (!status) return error ? <ErrorBox message={error} /> : null
+
+  const fmt = (d) => d ? new Date(d).toLocaleString() : '—'
+
+  return (
+    <div>
+      {error && <ErrorBox message={error} />}
+
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <span style={{
+            display: 'inline-block', padding: '4px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700,
+            color: '#0f1117', background: STATUS_COLOR[status.status] || '#64748b',
+          }}>
+            {status.status.toUpperCase()}
+          </span>
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>
+            {status.license_type ? `${status.license_type} license` : 'No license configured'}
+          </span>
+          <button onClick={recheck} disabled={rechecking} style={{ ...btnGhost, marginLeft: 'auto' }}>
+            {rechecking ? 'Checking…' : 'Re-check now'}
+          </button>
+        </div>
+
+        {status.status === 'degraded' && (
+          <div style={{
+            background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 10, padding: 12, marginBottom: 14,
+            color: '#fecaca', fontSize: 13,
+          }}>
+            Degraded mode — only admins can see data right now. Non-admin users and suppliers see nothing until this
+            is resolved. Renew the license (or check network access to the license server), then click "Re-check now" —
+            full functionality returns immediately, no data is lost.
+          </div>
+        )}
+        {status.status === 'grace' && (
+          <div style={{
+            background: '#451a03', border: '1px solid #92400e', borderRadius: 10, padding: 12, marginBottom: 14,
+            color: '#fde68a', fontSize: 13,
+          }}>
+            License check is currently failing — {status.grace_days_remaining ?? '?'} of {status.grace_days_total} grace
+            day(s) remaining before this account enters degraded mode.
+          </div>
+        )}
+
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>
+            <Row label="Customer" value={status.customer_name || '—'} />
+            <Row label="Station scope" value={status.station_scope || '—'} />
+            <Row label="Applied (activated)" value={fmt(status.activated_at)} />
+            <Row label="Expires" value={status.license_type === 'unlimited' ? 'Never (Unlimited)' : fmt(status.expires_at)} />
+            <Row label="Last check" value={fmt(status.last_check_at)} />
+            <Row label="Last check result" value={status.last_check_detail || (status.last_check_ok ? 'OK' : '—')} />
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, value }) {
+  return (
+    <tr style={{ borderTop: '1px solid #1e2130' }}>
+      <td style={{ ...td, color: '#64748b', width: 200 }}>{label}</td>
+      <td style={td}>{value}</td>
+    </tr>
+  )
+}
 
 function Field({ label, children }) {
   return (

@@ -187,6 +187,15 @@ or check the repo's commit history on GitHub. Run `./install.sh` again
 instead of `update.sh` if you also want to change deployment mode, rotate
 secrets, or reconfigure ports.
 
+**Prefer this to happen on its own?** `updater/check_for_updates.py` does
+the same `git pull` + `docker compose up -d --build`, but only when a check
+is actually due — wire it up as an hourly cron/systemd-timer/Task Scheduler
+entry (see `updater/README.md`) and it runs unattended. Off by default —
+turn it on from the dashboard's Settings -> Check for software updates, or
+it stays a no-op. Independent of Cloud sync and of any Cloud Utility
+license: works the same whether or not this station is connected to a
+cloud hub. See `docs/licensing-and-updates.md` for the full picture.
+
 ---
 
 ## Using the dashboard
@@ -353,6 +362,13 @@ glance without opening any one of them.
 Full setup, the auth model, and provisioning steps are in
 [`cloud/README.md`](cloud/README.md). Design rationale for how this is put
 together is in [`CLOUD-ARCHITECTURE.md`](CLOUD-ARCHITECTURE.md).
+
+**Licensing** (Cloud Utility only — a station running standalone never
+touches this): Annual (phone-home, 45-day grace on a lapse) or Unlimited
+(one-time signed offline license file, no phone-home ever). See
+[`license-server/README.md`](license-server/README.md) for issuing licenses
+and [`docs/licensing-and-updates.md`](docs/licensing-and-updates.md) for the
+full picture, including what's still open for sign-off.
 
 ---
 

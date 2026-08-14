@@ -104,11 +104,36 @@ def _commander_defaults() -> dict:
     }
 
 
+def _update_check_defaults() -> dict:
+    """
+    Software update checking — off by default, disclosed (not silently
+    enabled) on first run, per the dev handoff doc's "must be opt-in and
+    separate from licensing" constraint. Nothing here is sourced from
+    tls-decoded.yaml; it's purely a runtime toggle. See updater/README.md
+    for what actually reads update_check_enabled/interval — a host-level
+    script/service, not a container, so it can run `git pull` +
+    `docker compose up -d --build` without the docker-socket-sibling-mount
+    headaches of doing that from inside a container.
+    """
+    return {
+        "update_check_enabled": "false",
+        "update_check_interval_days": "7",
+        "update_last_checked_at": "",
+        "update_last_applied_at": "",
+        "update_current_ref": "",
+        "update_last_result": "",
+        "update_check_requested_at": "",
+    }
+
+
 def _get_all(db: Session) -> dict[str, str]:
     """Read all settings rows, seeding any missing keys with YAML/generated defaults."""
     rows = db.query(Setting).all()
     values = {r.key: (r.value or "") for r in rows}
-    defaults = {**_yaml_defaults(), **_cloud_sync_defaults(), **_commander_defaults(), **_brand_defaults()}
+    defaults = {
+        **_yaml_defaults(), **_cloud_sync_defaults(), **_commander_defaults(),
+        **_brand_defaults(), **_update_check_defaults(),
+    }
     missing = {k: v for k, v in defaults.items() if k not in values}
     if missing:
         for k, v in missing.items():
@@ -142,6 +167,19 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
     commander_connected_raw = v.get("commander_last_connected") or ""
     commander_connected = {"true": True, "false": False}.get(commander_connected_raw)
 
+    def _parse_ts(raw: str):
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+
+    update_checked_at = _parse_ts(v.get("update_last_checked_at") or "")
+    update_applied_at = _parse_ts(v.get("update_last_applied_at") or "")
+    update_requested_at = _parse_ts(v.get("update_check_requested_at") or "")
+    update_pending = bool(update_requested_at and (not update_checked_at or update_requested_at > update_checked_at))
+
     return SettingsOut(
         poll_interval_minutes=int(v.get("poll_interval_minutes") or 60),
         poll_aligned=(v.get("poll_aligned") or "true").lower() == "true",
@@ -172,6 +210,13 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         brand_secondary_color=v.get("brand_secondary_color") or "#6366f1",
         brand_accent_color=v.get("brand_accent_color") or "#3b82f6",
         brand_logo_data_url=v.get("brand_logo_data_url") or "",
+        update_check_enabled=(v.get("update_check_enabled") or "false").lower() == "true",
+        update_check_interval_days=int(v.get("update_check_interval_days") or 7),
+        update_last_checked_at=update_checked_at,
+        update_last_applied_at=update_applied_at,
+        update_current_ref=v.get("update_current_ref") or "",
+        update_last_result=v.get("update_last_result") or "",
+        update_check_pending=update_pending,
     )
 
 
@@ -277,6 +322,16 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=400, detail=f"{field} must be a hex color like #3b82f6")
             _set(db, field, candidate.lower())
 
+    # ── Software update checking — opt-in, independent of licensing (there
+    #    is none on this side) and of cloud sync. See updater/README.md. ──
+    if update.update_check_enabled is not None:
+        _set(db, "update_check_enabled", "true" if update.update_check_enabled else "false")
+
+    if update.update_check_interval_days is not None:
+        if not (1 <= update.update_check_interval_days <= 90):
+            raise HTTPException(status_code=400, detail="update_check_interval_days must be between 1 and 90")
+        _set(db, "update_check_interval_days", str(update.update_check_interval_days))
+
     if update.brand_logo_data_url is not None:
         candidate = update.brand_logo_data_url.strip()
         if candidate:
@@ -297,6 +352,52 @@ def trigger_poll_now(db: Session = Depends(get_db)):
     _get_all(db)
     _set(db, "poll_now_requested_at", datetime.now(tz=timezone.utc).isoformat())
     return {"status": "requested"}
+
+
+@router.post("/settings/update/check-now")
+def trigger_update_check_now(db: Session = Depends(get_db)):
+    """
+    Ask the host-level updater (updater/check_for_updates.py) to run an
+    out-of-cycle check on its next tick — same pattern as poll-now above.
+    This is also what a cloud-triggered "check for updates" ultimately sets:
+    the station's own sync container writes this same flag locally after
+    picking up the cloud's request (see sync/main.py's
+    apply_pending_update_check_request) — the Local Instance still never
+    accepts an inbound connection to make that happen.
+
+    No-ops silently if update checking is disabled — this button only
+    schedules a check, it can't turn the feature on for someone.
+    """
+    values = _get_all(db)
+    if (values.get("update_check_enabled") or "false").lower() != "true":
+        return {"status": "not_enabled", "detail": "Enable 'Check for software updates' above first."}
+    _set(db, "update_check_requested_at", datetime.now(tz=timezone.utc).isoformat())
+    return {"status": "requested"}
+
+
+@router.post("/settings/update/report")
+def report_update_check_result(body: dict, db: Session = Depends(get_db)):
+    """
+    Called by updater/check_for_updates.py (a host-level script, not a
+    container — see updater/README.md for why) after it runs a check, to
+    record the outcome for display in the Settings -> Software Updates
+    panel. Not meant to be called from the frontend directly.
+
+    Body: {"applied": bool, "current_ref": str, "result": str}
+    Clearing "pending" happens implicitly: update_check_pending is derived
+    as (update_check_requested_at > update_last_checked_at), and this
+    endpoint always advances update_last_checked_at to now.
+    """
+    _get_all(db)
+    now = datetime.now(tz=timezone.utc).isoformat()
+    _set(db, "update_last_checked_at", now)
+    if body.get("current_ref") is not None:
+        _set(db, "update_current_ref", str(body.get("current_ref") or ""))
+    if body.get("result") is not None:
+        _set(db, "update_last_result", str(body.get("result") or ""))
+    if body.get("applied"):
+        _set(db, "update_last_applied_at", now)
+    return {"ok": True}
 
 
 @router.post("/settings/device-id/regenerate", response_model=DeviceIdOut)

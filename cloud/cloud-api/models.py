@@ -70,6 +70,16 @@ class Station(Base):
     # only station so far; set explicitly for any station in another tz.
     timezone: Mapped[str | None] = mapped_column(Text)
 
+    # Cloud -> station "please check for updates now" flag — set by an admin
+    # (routers/admin.py's request_update_check), cleared by the station's own
+    # sync container once it's picked the request up and set the local
+    # update_check_requested_at setting (see routers/ingest.py's
+    # update_check_request endpoints + sync/main.py). Mirrors the
+    # PendingPriceUpdate pattern: cloud never reaches into a station's
+    # network, the station pulls on its own next tick instead.
+    update_check_requested_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    update_check_acked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
     # Branding — mirrored FROM the station (set locally, Settings ->
     # Branding), never edited from the cloud side. A customer with stations
     # under different fuel brands sees each one themed correctly: T1 for
@@ -226,6 +236,103 @@ class CloudFuelPrice(Base):
     source: Mapped[str] = mapped_column(Text, default="manual")
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+# ── Supplier workflow ────────────────────────────────────────────────────────
+
+class FuelOrder(Base):
+    """
+    Records a supplier's 'I have ordered fuel' action for a station.
+    snoozed_until = ordered_at + 6h; while active the station sinks to the
+    bottom of the supplier's urgency-sorted list with a countdown badge.
+    Designed to be the foundation for a real ordering integration in a later
+    phase (e.g. linking to a fuel supplier's PO system) — don't add a
+    'completed' column yet; that's phase 2.
+    """
+    __tablename__ = "fuel_orders"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    station_id: Mapped[int] = mapped_column(Integer, ForeignKey("stations.id"), nullable=False)
+    supplier_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    ordered_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    eta_note: Mapped[str | None] = mapped_column(Text)
+    snoozed_until: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class Notification(Base):
+    """
+    In-app notification for admin/user-role recipients. Currently only type
+    'fuel_ordered' is created; the type column lets future features (e.g. low
+    tank alarm, delivery confirmed) fan into the same bell-icon UI without a
+    schema change.
+    """
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    station_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("stations.id"))
+    type: Mapped[str] = mapped_column(Text, nullable=False)   # "fuel_ordered" | ...
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    eta_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class PushSubscription(Base):
+    """
+    Browser Web Push subscription (serialised PushSubscription JSON from the
+    browser's PushManager.subscribe() call). One user may have many — one per
+    browser/device they've approved. Upserted on the endpoint so re-loading
+    the same browser doesn't create duplicates.
+    """
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    subscription_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+# ── Licensing (Cloud Utility only — Local Instance never touches this) ──────
+
+class CloudLicenseState(Base):
+    """
+    Single-row table (id is always 1) holding this Cloud Utility's current
+    license state — cached locally so the app can answer "am I licensed?"
+    instantly on every request without a network round-trip per check, and
+    so degraded mode survives a restart while the license server happens to
+    be unreachable. See ../licensing.py for how this gets populated and
+    ../../CLOUD-ARCHITECTURE.md-style reasoning: this is Cloud Utility-only,
+    by design — the Local Instance has no equivalent table and never will.
+    """
+    __tablename__ = "cloud_license_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    license_type: Mapped[str | None] = mapped_column(Text)   # "annual" | "unlimited" | None (unconfigured)
+    customer_name: Mapped[str | None] = mapped_column(Text)
+    station_scope: Mapped[str | None] = mapped_column(Text)
+
+    # "active" | "grace" | "degraded" | "unconfigured" — see licensing.py's
+    # evaluate_state() for the state machine. "grace" here means "currently
+    # failing but within the 45-day window," matching the dev handoff doc's
+    # "unreachable or invalid for 45 consecutive days -> degraded" language;
+    # it is distinct from (but influenced by) any "grace" status the license
+    # server itself may return.
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="unconfigured")
+
+    activated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))  # from the license server; irrelevant for Unlimited
+
+    last_check_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    last_check_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_check_detail: Mapped[str | None] = mapped_column(Text)
+
+    # First moment the *current* streak of failures (unreachable or invalid)
+    # began — cleared back to NULL the moment a check succeeds. status
+    # flips to "degraded" once (now - failing_since) >= LICENSE_GRACE_DAYS.
+    failing_since: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
     updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
