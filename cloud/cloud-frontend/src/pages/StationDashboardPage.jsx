@@ -107,6 +107,7 @@ export default function StationDashboardPage() {
             <div style={{
               display: 'grid',
               gridTemplateColumns: gaugeGridCols,
+              justifyContent: 'center',
               gap: 16,
               marginBottom: 24,
             }}>
@@ -233,41 +234,48 @@ function TankDetail({ stationId, tank, isSupplier }) {
     if (!isSupplier) api.stationTankPrices(stationId, tank.local_id).then(setPrices).catch(() => {})
   }, [stationId, tank.local_id, isSupplier])
 
+  // Stats/pricing panels and the deliveries table are two separate grids,
+  // not one grid with a spanning item — mixing them caused a CSS grid quirk
+  // where "Recent deliveries" spanning every auto-fit track kept those
+  // tracks from collapsing, so Stats got squeezed into a narrow column with
+  // a big empty gap next to it instead of filling the row.
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-      gap: 16,
-    }}>
-      <Panel title="Stats">
-        {!stats ? <Muted /> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
-            <Row label="Today consumed" value={fmtGal(stats.today_consumed_gallons)} />
-            {!isSupplier && <Row label="Today profit" value={fmtUsd(stats.today_profit_dollars)} />}
-            <Row label="7-day consumed" value={fmtGal(stats.week_consumed_gallons)} />
-            {!isSupplier && <Row label="7-day margin" value={fmtUsd(stats.total_margin_7d)} />}
-            <Row label="30-day avg/day" value={fmtGal(stats.avg_daily_gallons_30d)} />
-            <Row label="Days since last delivery" value={stats.days_since_last_delivery ?? '—'} />
-            <Row label="Water" value={stats.water_inches_latest !== null ? `${stats.water_inches_latest}"` : '—'}
-                 warn={stats.water_alert} />
-          </div>
-        )}
-      </Panel>
-
-      {!isSupplier && (
-        <Panel title="Current pricing">
-          {!prices ? <Muted /> : prices.length === 0 ? <Muted text="No pricing entered yet" /> : (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: 16,
+      }}>
+        <Panel title="Stats">
+          {!stats ? <Muted /> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
-              <Row label="Sale price/gal" value={`$${prices[0].sale_price_per_gallon.toFixed(3)}`} />
-              <Row label="Cost/gal" value={`$${prices[0].cost_per_gallon.toFixed(3)}`} />
-              <Row label="Margin/gal" value={`$${prices[0].margin_per_gallon.toFixed(3)}`} />
-              <Row label="Effective" value={format(parseISO(prices[0].effective_at), 'MMM d, yyyy')} />
+              <Row label="Today consumed" value={fmtGal(stats.today_consumed_gallons)} />
+              {!isSupplier && <Row label="Today profit" value={fmtUsd(stats.today_profit_dollars)} />}
+              <Row label="7-day consumed" value={fmtGal(stats.week_consumed_gallons)} />
+              {!isSupplier && <Row label="7-day margin" value={fmtUsd(stats.total_margin_7d)} />}
+              <Row label="30-day avg/day" value={fmtGal(stats.avg_daily_gallons_30d)} />
+              <Row label="Days since last delivery" value={stats.days_since_last_delivery ?? '—'} />
+              <Row label="Water" value={stats.water_inches_latest !== null ? `${stats.water_inches_latest}"` : '—'}
+                   warn={stats.water_alert} />
             </div>
           )}
         </Panel>
-      )}
 
-      <Panel title="Recent deliveries" span2>
+        {!isSupplier && (
+          <Panel title="Current pricing">
+            {!prices ? <Muted /> : prices.length === 0 ? <Muted text="No pricing entered yet" /> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+                <Row label="Sale price/gal" value={`$${prices[0].sale_price_per_gallon.toFixed(3)}`} />
+                <Row label="Cost/gal" value={`$${prices[0].cost_per_gallon.toFixed(3)}`} />
+                <Row label="Margin/gal" value={`$${prices[0].margin_per_gallon.toFixed(3)}`} />
+                <Row label="Effective" value={format(parseISO(prices[0].effective_at), 'MMM d, yyyy')} />
+              </div>
+            )}
+          </Panel>
+        )}
+      </div>
+
+      <Panel title="Recent deliveries">
         {!deliveries ? <Muted /> : deliveries.length === 0 ? <Muted text="No deliveries recorded yet" /> : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 320 }}>
