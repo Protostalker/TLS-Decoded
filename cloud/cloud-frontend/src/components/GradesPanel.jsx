@@ -181,6 +181,24 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
       setBusy(false)
     }
   }
+  const saveCloudOrder = async () => {
+    setBusy(true); setErr(null)
+    try {
+      await api.cloudReorderTanks(stationId, order, 'Cloud-only reorder')
+      setReordering(false)
+      onApplied && onApplied()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const clearCloudOrderNow = async () => {
+    setBusy(true); setErr(null)
+    try { await api.clearCloudOrder(stationId); onApplied && onApplied() }
+    catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const cloudOrderActive = tanks.some(t => t.display_order_override != null)
 
   const tankById = Object.fromEntries(tanks.map(t => [t.local_id, t]))
   const rows = reordering ? order.map(lid => tankById[lid]).filter(Boolean) : tanks
@@ -194,13 +212,20 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
         {!reordering
           ? <button style={btn} onClick={startReorder}>Reorder tanks</button>
           : (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={btnPrimary} disabled={busy} onClick={saveOrder}>Queue new order</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button style={btnPrimary} disabled={busy} onClick={saveOrder} title="Drives the new order to the station">Queue for station</button>
+              <button style={{ ...btnPrimary, background: '#b91c1c' }} disabled={busy} onClick={saveCloudOrder} title="Changes the order in the cloud view only — does not touch the station">Apply to cloud now</button>
               <button style={btn} disabled={busy} onClick={() => setReordering(false)}>Cancel</button>
             </div>
           )}
       </div>
 
+      {cloudOrderActive && !reordering && (
+        <div style={{ fontSize: 11, color: '#f87171', background: 'var(--brand-well, #111827)', border: '1px solid #7f1d1d', borderRadius: 8, padding: '8px 10px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>Tank order is temporarily set in the cloud only<sup>*</sup> — the station's own order is unchanged.</span>
+          <button style={btn} disabled={busy} onClick={clearCloudOrderNow}>Clear cloud order</button>
+        </div>
+      )}
       {pending.length > 0 && (
         <div style={{
           fontSize: 11, color: '#93c5fd', background: 'var(--brand-primary-soft, #0f1c33)', border: '1px solid #1e3a5f',

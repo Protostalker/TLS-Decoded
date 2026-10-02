@@ -75,6 +75,10 @@ export const api = {
     request(`/stations/${id}/tanks/${tankLocalId}/cloud-label`, { method: 'PUT', body: JSON.stringify(body) }),
   clearCloudLabel: (id, tankLocalId) =>
     request(`/stations/${id}/tanks/${tankLocalId}/cloud-label`, { method: 'DELETE' }),
+  cloudReorderTanks: (id, orderedTankLocalIds, note) =>
+    request(`/stations/${id}/tanks/cloud-reorder`, { method: 'POST', body: JSON.stringify({ ordered_tank_local_ids: orderedTankLocalIds, note }) }),
+  clearCloudOrder: (id) =>
+    request(`/stations/${id}/tanks/cloud-order`, { method: 'DELETE' }),
 
   // ── Supplier ──
   supplier: {

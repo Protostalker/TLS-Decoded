@@ -14,7 +14,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from auth import assigned_station_ids, get_current_user, require_admin, require_not_degraded, require_station_access
@@ -282,7 +282,7 @@ def combined_stats(user: User = Depends(get_current_user), db: Session = Depends
         tanks = (
             db.query(CloudTank)
             .filter(CloudTank.station_id == s.id, CloudTank.active == True)  # noqa: E712
-            .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
+            .order_by(func.coalesce(CloudTank.display_order_override, CloudTank.display_order).asc().nullslast(), CloudTank.local_id)
             .all()
         )
         tank_stats = [_compute_tank_stats(db, s, t) for t in tanks]
@@ -373,7 +373,7 @@ def station_dashboard(station_id: int, user: User = Depends(get_current_user), d
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
+        .order_by(func.coalesce(CloudTank.display_order_override, CloudTank.display_order).asc().nullslast(), CloudTank.local_id)
         .all()
     )
 
@@ -389,6 +389,7 @@ def station_dashboard(station_id: int, user: User = Depends(get_current_user), d
             display_order=tank.display_order,
             name_override=tank.name_override,
             product_override=tank.product_override,
+            display_order_override=tank.display_order_override,
             override_note=tank.override_note,
             latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
         ))
@@ -458,7 +459,7 @@ def station_tanks(station_id: int, user: User = Depends(get_current_user), db: S
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
+        .order_by(func.coalesce(CloudTank.display_order_override, CloudTank.display_order).asc().nullslast(), CloudTank.local_id)
         .all()
     )
     out = []
@@ -471,6 +472,7 @@ def station_tanks(station_id: int, user: User = Depends(get_current_user), db: S
             display_order=tank.display_order,
             name_override=tank.name_override,
             product_override=tank.product_override,
+            display_order_override=tank.display_order_override,
             override_note=tank.override_note,
             latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
         ))
@@ -684,6 +686,7 @@ def set_cloud_label(
         capacity_gallons=tank.capacity_gallons, reorder_threshold_gallons=tank.reorder_threshold_gallons,
         active=tank.active, display_order=tank.display_order,
         name_override=tank.name_override, product_override=tank.product_override,
+        display_order_override=tank.display_order_override,
         override_note=tank.override_note,
         latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
     )
@@ -704,6 +707,45 @@ def clear_cloud_label(
     tank.product_override = None
     tank.override_note = None
     tank.override_set_at = None
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/stations/{station_id}/tanks/cloud-reorder")
+def cloud_reorder_tanks(
+    station_id: int, body: TankReorderRequest,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    """Cloud-ONLY reorder: set each listed tank's display_order_override to its
+    position. Wins over the mirrored display_order for sorting in the cloud
+    view (and the supplier's list) without touching the station. Clear it with
+    DELETE .../tanks/cloud-order once the station's own order is corrected."""
+    require_station_access(station_id, db, user)
+    tanks = db.query(CloudTank).filter(CloudTank.station_id == station_id).all()
+    known = {t.local_id: t for t in tanks}
+    ids = body.ordered_tank_local_ids
+    if not ids:
+        raise HTTPException(status_code=400, detail="ordered_tank_local_ids is empty")
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=400, detail="Duplicate tank ids in order")
+    unknown = [i for i in ids if i not in known]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"Unknown tank ids: {unknown}")
+    for position, tlid in enumerate(ids):
+        known[tlid].display_order_override = position
+    db.commit()
+    return {"ok": True, "ordered": ids}
+
+
+@router.delete("/stations/{station_id}/tanks/cloud-order")
+def clear_cloud_order(
+    station_id: int,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+    db.query(CloudTank).filter(CloudTank.station_id == station_id).update(
+        {CloudTank.display_order_override: None}, synchronize_session=False
+    )
     db.commit()
     return {"ok": True}
 
@@ -822,7 +864,7 @@ def station_stats_summary(station_id: int, user: User = Depends(get_current_user
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
+        .order_by(func.coalesce(CloudTank.display_order_override, CloudTank.display_order).asc().nullslast(), CloudTank.local_id)
         .all()
     )
     tank_stats = [_compute_tank_stats(db, station, t) for t in tanks]

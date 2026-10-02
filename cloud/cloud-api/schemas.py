@@ -256,6 +256,7 @@ class TankOut(BaseModel):
     # UI can render it in red with an asterisk + note.
     name_override: Optional[str] = None
     product_override: Optional[str] = None
+    display_order_override: Optional[int] = None
     override_note: Optional[str] = None
     latest_reading: Optional[ReadingOut] = None
 

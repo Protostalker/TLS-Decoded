@@ -242,6 +242,10 @@ class CloudTank(Base):
     # at which point an admin clears the override.
     name_override: Mapped[str | None] = mapped_column(Text)
     product_override: Mapped[str | None] = mapped_column(Text)
+    # Cloud-only order override — wins over display_order for sorting in the
+    # cloud view (COALESCE), so tanks can be reordered for the supplier
+    # without touching the station. Also never written by ingest.
+    display_order_override: Mapped[int | None] = mapped_column(Integer)
     override_note: Mapped[str | None] = mapped_column(Text)
     override_set_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))

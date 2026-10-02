@@ -116,6 +116,7 @@ def _migrate_schema() -> None:
         conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS display_order INTEGER"))
         conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS name_override TEXT"))
         conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS product_override TEXT"))
+        conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS display_order_override INTEGER"))
         conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS override_note TEXT"))
         conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS override_set_at TIMESTAMPTZ"))
         conn.execute(text("""

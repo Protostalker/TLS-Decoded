@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from auth import assigned_station_ids, get_current_user, require_not_degraded, require_station_access
@@ -65,7 +65,7 @@ def _build_supplier_station(db: Session, station: Station) -> dict:
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station.id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.local_id)
+        .order_by(func.coalesce(CloudTank.display_order_override, CloudTank.display_order).asc().nullslast(), CloudTank.local_id)
         .all()
     )
 
