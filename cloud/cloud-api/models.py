@@ -232,6 +232,18 @@ class CloudTank(Base):
     # -> mirrored back here through the normal one-way push, same path as
     # any other tank edit.
     display_order: Mapped[int | None] = mapped_column(Integer)
+    # Cloud-ONLY display overrides (temporary). Set from the admin Grades
+    # panel when a grade is mislabeled on the station but the correction
+    # can't be pushed down yet (or you want the supplier to see the right
+    # label immediately). NEVER written by ingest (see routers/ingest.py —
+    # the tank upsert does not list these columns), so a station push can't
+    # clobber them; they live purely in the cloud mirror and render in red
+    # with an asterisk + note until the real station-side name catches up,
+    # at which point an admin clears the override.
+    name_override: Mapped[str | None] = mapped_column(Text)
+    product_override: Mapped[str | None] = mapped_column(Text)
+    override_note: Mapped[str | None] = mapped_column(Text)
+    override_set_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 

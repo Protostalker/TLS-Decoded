@@ -250,6 +250,13 @@ class TankOut(BaseModel):
     reorder_threshold_gallons: Optional[float]
     active: bool
     display_order: Optional[int] = None
+    # Cloud-only temporary label override (mislabeled grade, corrected in
+    # the cloud view before the station itself is fixed). name/product
+    # above stay the raw mirrored values; these carry the override so the
+    # UI can render it in red with an asterisk + note.
+    name_override: Optional[str] = None
+    product_override: Optional[str] = None
+    override_note: Optional[str] = None
     latest_reading: Optional[ReadingOut] = None
 
 
@@ -301,6 +308,16 @@ class TankConfigUpdateRequest(BaseModel):
     product: Optional[str] = None
     active: Optional[bool] = None
     display_order: Optional[int] = None
+    note: Optional[str] = None
+
+
+class CloudLabelRequest(BaseModel):
+    """Set/clear a cloud-ONLY display override for a tank. Does not touch the
+    station. Empty string or null clears that field. Omit a key to leave it
+    as-is. note is an optional custom reason shown with the asterisk."""
+    model_config = ConfigDict(extra="forbid")
+    name_override: Optional[str] = None
+    product_override: Optional[str] = None
     note: Optional[str] = None
 
 

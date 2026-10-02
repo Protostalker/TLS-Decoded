@@ -172,6 +172,11 @@ function StationCard({ station, tick, onOrder, isMobile }) {
           ))}
         </div>
       )}
+      {station.tanks?.some(t => t.name_overridden || t.product_overridden) && (
+        <div style={{ fontSize: 10, color: '#f87171', marginTop: 6 }}>
+          <sup>*</sup> label corrected by the operator and pending update on the station.
+        </div>
+      )}
 
       {/* Action row */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
@@ -211,7 +216,12 @@ function TankBar({ tank }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <div style={{ fontSize: 11, color: '#94a3b8', width: 110, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {tank.name}{tank.product ? ` · ${tank.product}` : ''}
+        {tank.name_overridden
+          ? <span style={{ color: '#f87171' }} title={(tank.override_note || 'This name will update/change.') + ' (temporary label)'}>{tank.name}<sup>*</sup></span>
+          : tank.name}
+        {tank.product ? <>{' · '}{tank.product_overridden
+          ? <span style={{ color: '#f87171' }} title={(tank.override_note || 'This name will update/change.') + ' (temporary label)'}>{tank.product}<sup>*</sup></span>
+          : tank.product}</> : ''}
       </div>
       {/* Fill bar */}
       <div style={{ flex: 1, background: '#111827', borderRadius: 4, height: 8, position: 'relative', overflow: 'hidden' }}>

@@ -26,7 +26,18 @@ export default function TankGauge({ tank }) {
       background: 'var(--brand-surface, #1e2130)', borderRadius: 16, padding: 16,
       border: '1.5px solid var(--brand-border, #2d3348)', width: '100%', boxSizing: 'border-box',
     }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--brand-text-dim, #94a3b8)' }}>{tank.name}</div>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--brand-text-dim, #94a3b8)' }}>
+        {tank.name_override
+          ? (
+            <span
+              style={{ color: '#f87171' }}
+              title={(tank.override_note || 'This name will update/change.') + ' (temporary cloud label)'}
+            >
+              {tank.name_override}<sup>*</sup>
+            </span>
+          )
+          : tank.name}
+      </div>
       {/* Vessel illustration + fill stay neutral (status, not brand) — same
           call as the local T1 gauge's fillColor. */}
       <div style={{

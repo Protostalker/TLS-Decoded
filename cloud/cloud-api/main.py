@@ -114,6 +114,10 @@ def _migrate_schema() -> None:
         # the same queue+pull pattern as pending_price_updates. create_all
         # makes the table for a fresh DB; this keeps an older-image DB in sync.
         conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS display_order INTEGER"))
+        conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS name_override TEXT"))
+        conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS product_override TEXT"))
+        conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS override_note TEXT"))
+        conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS override_set_at TIMESTAMPTZ"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS pending_tank_updates (
                 id SERIAL PRIMARY KEY,

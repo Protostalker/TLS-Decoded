@@ -81,9 +81,71 @@ function TankConfigForm({ stationId, tank, onDone, onCancel }) {
   )
 }
 
+const DEFAULT_OVERRIDE_NOTE = 'This name will update/change.'
+
+// Cloud-ONLY label override. Does not touch the station — it only changes how
+// this tank is labeled in the cloud view (T1 + the supplier's dashboard) so a
+// mislabeled grade reads correctly to everyone while the real station-side fix
+// is still pending. Rendered in red with an asterisk + note.
+function CloudLabelForm({ stationId, tank, onDone, onCancel }) {
+  const [nameOv, setNameOv] = useState(tank.name_override ?? '')
+  const [productOv, setProductOv] = useState(tank.product_override ?? '')
+  const [note, setNote] = useState(tank.override_note ?? '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const save = async () => {
+    setSaving(true); setErr(null)
+    try {
+      await api.setCloudLabel(stationId, tank.local_id, {
+        name_override: nameOv,
+        product_override: productOv,
+        note: note,
+      })
+      onDone()
+    } catch (e) { setErr(e.message) } finally { setSaving(false) }
+  }
+  const clear = async () => {
+    setSaving(true); setErr(null)
+    try { await api.clearCloudLabel(stationId, tank.local_id); onDone() }
+    catch (e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ background: 'var(--brand-well, #111827)', border: '1px solid #7f1d1d', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+      <div style={{ fontSize: 10, color: '#f87171', marginBottom: 8 }}>
+        Cloud-only label — shows in red with an asterisk to everyone (including the supplier). Does not change the station. Clear it once the station is fixed.
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ width: 160 }}>
+          <div style={fieldLabel}>Show name as</div>
+          <input type="text" value={nameOv} onChange={e => setNameOv(e.target.value)} placeholder={tank.name} style={inputStyle} />
+        </div>
+        <div style={{ width: 160 }}>
+          <div style={fieldLabel}>Show grade as</div>
+          <input type="text" value={productOv} onChange={e => setProductOv(e.target.value)} placeholder={tank.product || '(none)'} style={inputStyle} />
+        </div>
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <div style={fieldLabel}>Asterisk note</div>
+          <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder={DEFAULT_OVERRIDE_NOTE} style={inputStyle} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button style={{ ...btn, background: '#b91c1c', border: 'none', color: '#fff' }} disabled={saving} onClick={save}>Apply cloud label</button>
+        {(tank.name_override || tank.product_override) &&
+          <button style={btn} disabled={saving} onClick={clear}>Clear override</button>}
+        <button style={btn} onClick={onCancel}>Cancel</button>
+        {err && <span style={{ color: '#fca5a5', fontSize: 11 }}>{err}</span>}
+      </div>
+    </div>
+  )
+}
+
+
 export default function GradesPanel({ stationId, tanks, onApplied }) {
   const [pending, setPending] = useState([])    // not-yet-applied PendingTankUpdate rows
   const [editingTankId, setEditingTankId] = useState(null)
+  const [overrideTankId, setOverrideTankId] = useState(null)
   const [reordering, setReordering] = useState(false)
   const [order, setOrder] = useState([])          // local working order of tank local_ids
   const [busy, setBusy] = useState(false)
@@ -168,12 +230,23 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
                     <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>
                       grade: {tank.product || '—'}{tank.active === false ? ' · inactive' : ''}
                     </div>
+                    {(tank.name_override || tank.product_override) && (
+                      <div style={{ fontSize: 11, color: '#f87171', marginTop: 2 }}>
+                        cloud label: {tank.name_override || tank.name}{(tank.product_override || tank.product) ? ` · ${tank.product_override || tank.product}` : ''}<sup>*</sup>
+                        <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}> — {tank.override_note || DEFAULT_OVERRIDE_NOTE}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {!reordering && (
-                  <button style={btn} onClick={() => setEditingTankId(editingTankId === tank.local_id ? null : tank.local_id)}>
-                    {editingTankId === tank.local_id ? '× Cancel' : 'Edit'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button style={btn} onClick={() => { setOverrideTankId(null); setEditingTankId(editingTankId === tank.local_id ? null : tank.local_id) }}>
+                      {editingTankId === tank.local_id ? '× Cancel' : 'Edit'}
+                    </button>
+                    <button style={{ ...btn, borderColor: '#7f1d1d', color: '#f87171' }} onClick={() => { setEditingTankId(null); setOverrideTankId(overrideTankId === tank.local_id ? null : tank.local_id) }}>
+                      {overrideTankId === tank.local_id ? '× Cancel' : 'Cloud label'}
+                    </button>
+                  </div>
                 )}
               </div>
               {pendingForTank.length > 0 && (
@@ -195,6 +268,14 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
                   tank={tank}
                   onCancel={() => setEditingTankId(null)}
                   onDone={() => { setEditingTankId(null); load(); onApplied && onApplied() }}
+                />
+              )}
+              {!reordering && overrideTankId === tank.local_id && (
+                <CloudLabelForm
+                  stationId={stationId}
+                  tank={tank}
+                  onCancel={() => setOverrideTankId(null)}
+                  onDone={() => { setOverrideTankId(null); onApplied && onApplied() }}
                 />
               )}
             </div>

@@ -25,7 +25,7 @@ from models import (
 )
 from schemas import (
     PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut,
-    TankConfigUpdateOut, TankConfigUpdateRequest, TankOut, TankReorderRequest,
+    CloudLabelRequest, TankConfigUpdateOut, TankConfigUpdateRequest, TankOut, TankReorderRequest,
 )
 from weather import get_station_weather
 
@@ -244,8 +244,14 @@ def _compute_tank_stats(db: Session, station: Station, tank: CloudTank) -> dict:
 
     return {
         "tank_local_id": tank.local_id,
-        "tank_name": tank.name,
-        "product": tank.product,
+        # Effective labels: a cloud-only override wins over the mirrored
+        # value so every consumer (supplier stats included) sees the
+        # corrected grade. Flags + note let the UI mark it as temporary.
+        "tank_name": tank.name_override or tank.name,
+        "product": tank.product_override or tank.product,
+        "name_overridden": tank.name_override is not None,
+        "product_overridden": tank.product_override is not None,
+        "override_note": tank.override_note,
         "capacity_gallons": tank.capacity_gallons,
         "today_consumed_gallons": today_consumed,
         "today_profit_dollars": today_profit,
@@ -381,6 +387,9 @@ def station_dashboard(station_id: int, user: User = Depends(get_current_user), d
             capacity_gallons=tank.capacity_gallons, reorder_threshold_gallons=tank.reorder_threshold_gallons,
             active=tank.active,
             display_order=tank.display_order,
+            name_override=tank.name_override,
+            product_override=tank.product_override,
+            override_note=tank.override_note,
             latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
         ))
 
@@ -460,6 +469,9 @@ def station_tanks(station_id: int, user: User = Depends(get_current_user), db: S
             capacity_gallons=tank.capacity_gallons, reorder_threshold_gallons=tank.reorder_threshold_gallons,
             active=tank.active,
             display_order=tank.display_order,
+            name_override=tank.name_override,
+            product_override=tank.product_override,
+            override_note=tank.override_note,
             latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
         ))
     return out
@@ -626,6 +638,74 @@ def list_price_updates(
         .all()
     )
     return [_price_update_out(r) for r in rows]
+
+
+# ── Cloud-ONLY temporary label override (does NOT touch the station) ────────
+#
+# Separate from the drive-to-station queue above: when a grade is mislabeled
+# on the station and there's no way to push the correction down yet, an admin
+# can override how the tank is LABELED in the cloud only, so the supplier (and
+# everyone on T1/T2) sees the right grade immediately. It writes to cloud_tanks
+# columns the Ingest API never touches, so the next station push can't wipe it,
+# and it never reaches the station. The UI renders an overridden label in red
+# with an asterisk + note until the real station name catches up, at which
+# point an admin clears the override.
+
+@router.put("/stations/{station_id}/tanks/{tank_local_id}/cloud-label", response_model=TankOut)
+def set_cloud_label(
+    station_id: int, tank_local_id: int, body: CloudLabelRequest,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+    tank = db.query(CloudTank).filter(
+        CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id,
+    ).first()
+    if not tank:
+        raise HTTPException(status_code=404, detail="Tank not found")
+
+    fields_set = body.model_fields_set
+    # Empty string clears; a real value sets. Omitted key leaves it alone.
+    if "name_override" in fields_set:
+        tank.name_override = (body.name_override or None) and body.name_override.strip() or None
+    if "product_override" in fields_set:
+        tank.product_override = (body.product_override or None) and body.product_override.strip() or None
+    if "note" in fields_set:
+        tank.override_note = (body.note or None) and body.note.strip() or None
+
+    tank.override_set_at = (
+        datetime.now(tz=timezone.utc)
+        if (tank.name_override or tank.product_override) else None
+    )
+    db.commit()
+    db.refresh(tank)
+    latest = _latest_reading(db, station_id, tank.local_id)
+    return TankOut(
+        local_id=tank.local_id, name=tank.name, product=tank.product,
+        capacity_gallons=tank.capacity_gallons, reorder_threshold_gallons=tank.reorder_threshold_gallons,
+        active=tank.active, display_order=tank.display_order,
+        name_override=tank.name_override, product_override=tank.product_override,
+        override_note=tank.override_note,
+        latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
+    )
+
+
+@router.delete("/stations/{station_id}/tanks/{tank_local_id}/cloud-label")
+def clear_cloud_label(
+    station_id: int, tank_local_id: int,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+    tank = db.query(CloudTank).filter(
+        CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id,
+    ).first()
+    if not tank:
+        raise HTTPException(status_code=404, detail="Tank not found")
+    tank.name_override = None
+    tank.product_override = None
+    tank.override_note = None
+    tank.override_set_at = None
+    db.commit()
+    return {"ok": True}
 
 
 # ── Tank config / grade correction from the cloud side (T1 Grades panel) ────

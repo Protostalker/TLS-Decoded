@@ -267,6 +267,22 @@ vs. "applied" with the same latency honesty as the price-update list. The
 local poller's `sync_tanks` only re-asserts `active` from YAML and never
 stomps name/product/order, so a cloud-applied correction sticks.
 
+### Temporary cloud-only label override
+
+Separate from the drive-to-station queue above, and the safer of the two: an
+admin can override how a tank is **labeled in the cloud only**, without
+touching the station at all. Use it when a grade is mislabeled on the station
+and you want the fuel supplier (and everyone on T1/T2) to see the correct
+grade *right now*, before the station itself is fixed.
+
+It writes to `name_override` / `product_override` / `override_note` columns on
+`cloud_tanks` that the Ingest API never writes, so a station push can't wipe
+it. The label renders in **red with an asterisk** and the note "This name will
+update/change." everywhere the tank name shows, including the supplier's fill
+bars. Nothing is queued to the station and nothing is pulled by `sync`. Once
+the real station-side name catches up (via the queue above or an on-site fix),
+an admin clears the override and the label goes back to the mirrored value.
+
 ## Branding (station → cloud, mirrored — not editable from the cloud)
 
 A station's Branding settings (preset/colors/logo, set locally in Settings

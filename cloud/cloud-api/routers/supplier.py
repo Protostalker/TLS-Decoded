@@ -80,8 +80,14 @@ def _build_supplier_station(db: Session, station: Station) -> dict:
         pct = round(vol / cap, 4) if (vol is not None and cap and cap > 0) else None
         tank_summaries.append({
             "tank_local_id": tank.local_id,
-            "name": tank.name,
-            "product": tank.product,
+            # Effective label: a cloud-only override (a grade mislabeled on
+            # the station, corrected in the cloud view) wins so the driver
+            # sees the right grade. Flag + note mark it as temporary.
+            "name": tank.name_override or tank.name,
+            "product": tank.product_override or tank.product,
+            "name_overridden": tank.name_override is not None,
+            "product_overridden": tank.product_override is not None,
+            "override_note": tank.override_note,
             "capacity_gallons": cap,
             "current_volume_gallons": vol,
             "fill_pct": pct,          # 0.0–1.0, None if no reading
