@@ -54,7 +54,9 @@ export default function AllPricingPanel({ tanks }) {
                   <div style={{ fontWeight: 700, fontSize: 13, minWidth: 100 }}>{tank.name}</div>
                   {p ? (
                     <div style={{ fontSize: 12, color: 'var(--brand-text, #cbd5e1)', flex: 1 }}>
-                      cost {money(p.cost_per_gallon, 4)} · sale {money(p.sale_price_per_gallon, 4)}
+                      cost {money(p.cost_per_gallon, 4)}
+                      {!!p.additional_fee_per_gallon && <> · fee {money(p.additional_fee_per_gallon, 4)}</>}
+                      {' · sale '}{money(p.sale_price_per_gallon, 4)}
                       {' · '}
                       <span style={{ color: p.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
                         margin {money(p.margin_per_gallon, 4)}

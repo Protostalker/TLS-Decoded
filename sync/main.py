@@ -100,6 +100,13 @@ def ensure_sync_schema(engine: sqlalchemy.Engine) -> None:
                 f"FOR EACH ROW EXECUTE FUNCTION sync_touch_updated_at()"
             ))
 
+    # display_order is a product column (set via the local dashboard or a
+    # cloud-side grade correction applied below). Added here as well as in
+    # the api/poller migrations so whichever container starts first brings
+    # the schema up — same either-service-migrates pattern as updated_at.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE tanks ADD COLUMN IF NOT EXISTS display_order INTEGER"))
+
     with engine.begin() as conn:
         conn.execute(text(
             """
@@ -294,7 +301,7 @@ def fetch_poll_log(engine: sqlalchemy.Engine, since_id: int, limit: int) -> list
 def fetch_tanks(engine: sqlalchemy.Engine, since_ts, since_id: int, limit: int) -> list[dict]:
     sql = text(
         """
-        SELECT id, name, product, capacity_gallons, reorder_threshold_gallons, active, updated_at
+        SELECT id, name, product, capacity_gallons, reorder_threshold_gallons, active, display_order, updated_at
         FROM tanks WHERE (updated_at, id) > (:since_ts, :since_id)
         ORDER BY updated_at ASC, id ASC LIMIT :limit
         """
@@ -305,7 +312,8 @@ def fetch_tanks(engine: sqlalchemy.Engine, since_ts, since_id: int, limit: int) 
         {
             "local_id": r["id"], "name": r["name"], "product": r["product"],
             "capacity_gallons": r["capacity_gallons"], "reorder_threshold_gallons": r["reorder_threshold_gallons"],
-            "active": r["active"], "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+            "active": r["active"], "display_order": r["display_order"],
+            "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
         }
         for r in rows
     ]
@@ -437,6 +445,65 @@ def apply_pending_price_updates(engine: sqlalchemy.Engine, client: httpx.Client,
             logger.info("Applied cloud-submitted price update for tank %s (update id %s)", u["tank_local_id"], u["id"])
         except Exception:
             logger.exception("Failed to apply price update id %s — will retry next tick (not acked)", u.get("id"))
+    return applied
+
+
+# ── Tank-config / grade corrections queued from the cloud side (T1) ─────────
+#
+# Twin of apply_pending_price_updates above, same contract and same reason it
+# exists: a tank whose grade/product label or order is wrong in the field is
+# normally fixed on the local client, but with no local or network access to
+# the box there was no path to correct it. An admin queues the correction on
+# the cloud (PendingTankUpdate); this station — already dialing out every
+# tick, device-credential auth, never inbound — pulls it and applies it to
+# the LOCAL tanks table, which is the source of truth. The edit fires the
+# tanks updated_at trigger, so the corrected row flows back up to the cloud
+# mirror through the normal push next cycle, exactly as if someone had
+# retyped it at the station. Checked every tick (not gated behind the push
+# interval) so an operator watching a mislabeled grade isn't left waiting.
+
+def apply_pending_tank_updates(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: str, headers: dict) -> int:
+    try:
+        resp = client.get(f"{cloud_url}/ingest/tank-updates", headers=headers, timeout=15.0)
+        resp.raise_for_status()
+        updates = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Could not check for pending tank updates: %s", exc)
+        return 0
+
+    applied = 0
+    for u in updates:
+        # Build the SET clause from only the fields this update actually
+        # carries — set_* flags preserve "clear to NULL" vs "leave alone".
+        assignments = []
+        params = {"tid": u["tank_local_id"]}
+        if u.get("set_name"):
+            assignments.append("name = :name")
+            params["name"] = u.get("name")
+        if u.get("set_product"):
+            assignments.append("product = :product")
+            params["product"] = u.get("product")
+        if u.get("set_active"):
+            assignments.append("active = :active")
+            params["active"] = u.get("active")
+        if u.get("set_display_order"):
+            assignments.append("display_order = :dord")
+            params["dord"] = u.get("display_order")
+
+        try:
+            if assignments:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(f"UPDATE tanks SET {', '.join(assignments)} WHERE id = :tid"),
+                        params,
+                    )
+            # Ack even a no-op row so it doesn't re-fetch forever.
+            client.post(f"{cloud_url}/ingest/tank-updates/{u['id']}/ack", headers=headers, timeout=15.0)
+            applied += 1
+            logger.info("Applied cloud-submitted tank update for tank %s (update id %s): %s",
+                        u["tank_local_id"], u["id"], ", ".join(assignments) or "no-op")
+        except Exception:
+            logger.exception("Failed to apply tank update id %s — will retry next tick (not acked)", u.get("id"))
     return applied
 
 
@@ -598,6 +665,7 @@ def main() -> None:
         # Checked every tick, independent of the push interval below — a
         # price update shouldn't have to wait up to 30 minutes.
         apply_pending_price_updates(engine, client, cs["url"], headers)
+        apply_pending_tank_updates(engine, client, cs["url"], headers)
         apply_pending_update_check_request(engine, client, cs["url"], headers)
 
         now = datetime.now(tz=timezone.utc)

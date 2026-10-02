@@ -248,8 +248,9 @@ def export_monthly_summary(
             return None
         cost = float(applicable.cost_per_gallon or 0)
         tax = float(applicable.tax_fees_per_gallon or 0)
+        fee = float(applicable.additional_fee_per_gallon or 0)
         sale = float(applicable.sale_price_per_gallon or 0)
-        return sale - (cost + tax)
+        return sale - (cost + tax + fee)
 
     header = (
         ["Day"]

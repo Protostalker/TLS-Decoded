@@ -16,6 +16,11 @@ class Tank(Base):
     capacity_gallons: Mapped[float | None] = mapped_column(Float)
     reorder_threshold_gallons: Mapped[float | None] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Display/sort order on the dashboard (local and cloud-mirrored T1).
+    # NULL sorts last, then by id, so unset tanks keep a stable sequence.
+    # Editable from the local dashboard or via a cloud-side grade
+    # correction applied by the sync container.
+    display_order: Mapped[int | None] = mapped_column(Integer)
     # Commander-reader grade id this tank corresponds to, at this station's
     # Commander unit specifically. Grade ids are NOT portable across stations
     # (or even reliably guessable from grade name — duplicate names with
@@ -106,6 +111,12 @@ class FuelPrice(Base):
     # tax_rate_percent is left blank.
     tax_fees_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6), default=0)
     tax_rate_percent: Mapped[float | None] = mapped_column(Numeric(9, 4))
+    # Flat $/gal adjustment applied on top of tax — positive reduces margin
+    # (e.g. a 2-cent underground storage tank fee baked into breakeven),
+    # negative increases it. Defaults from the default_additional_fee_per_gallon
+    # setting when not given explicitly; stored per-row (like tax_rate_percent)
+    # so retroactive changes to the station default don't rewrite history.
+    additional_fee_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
     sale_price_per_gallon: Mapped[float | None] = mapped_column(Numeric(12, 6))
     source: Mapped[str] = mapped_column(Text, default="manual")
     note: Mapped[str | None] = mapped_column(Text)

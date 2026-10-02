@@ -6,6 +6,7 @@ import TopBar from '../components/TopBar.jsx'
 import TankGauge from '../components/TankGauge.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import PricingPanel from '../components/PricingPanel.jsx'
+import GradesPanel from '../components/GradesPanel.jsx'
 import Footer from '../components/Footer.jsx'
 import { applyBrandTheme } from '../brandTheme.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -20,6 +21,7 @@ export default function StationDashboardPage() {
   const { id } = useParams()
   const { user } = useAuth()
   const isSupplier = user?.role === 'supplier'
+  const isAdmin = user?.role === 'admin'
   const isMobile = useIsMobile(768)
   const isTablet = useIsMobile(1200)
   const gaugeGridCols = isMobile ? '1fr 1fr' : isTablet ? '1fr 1fr 1fr' : 'repeat(auto-fit, minmax(200px, 280px))'
@@ -103,6 +105,7 @@ export default function StationDashboardPage() {
 
             <WeatherPanel stationId={id} />
             {!isSupplier && <PricingPanel stationId={id} tanks={data.tanks} />}
+            {isAdmin && <GradesPanel stationId={id} tanks={data.tanks} onApplied={load} />}
 
             <div style={{
               display: 'grid',

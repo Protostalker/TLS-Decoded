@@ -110,6 +110,29 @@ def _migrate_schema() -> None:
         # Licensing — Cloud Utility only, see models.CloudLicenseState / licensing.py.
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS update_check_requested_at TIMESTAMPTZ"))
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS update_check_acked_at TIMESTAMPTZ"))
+        # Remote tank-config / grade correction (cloud -> station), built on
+        # the same queue+pull pattern as pending_price_updates. create_all
+        # makes the table for a fresh DB; this keeps an older-image DB in sync.
+        conn.execute(text("ALTER TABLE cloud_tanks ADD COLUMN IF NOT EXISTS display_order INTEGER"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS pending_tank_updates (
+                id SERIAL PRIMARY KEY,
+                station_id INTEGER REFERENCES stations(id) NOT NULL,
+                tank_local_id INTEGER NOT NULL,
+                set_name BOOLEAN NOT NULL DEFAULT FALSE,
+                name TEXT,
+                set_product BOOLEAN NOT NULL DEFAULT FALSE,
+                product TEXT,
+                set_active BOOLEAN NOT NULL DEFAULT FALSE,
+                active BOOLEAN,
+                set_display_order BOOLEAN NOT NULL DEFAULT FALSE,
+                display_order INTEGER,
+                note TEXT,
+                created_by_user_id INTEGER REFERENCES users(id),
+                created_at TIMESTAMPTZ NOT NULL,
+                applied_at TIMESTAMPTZ
+            )
+        """))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS cloud_license_state (
                 id INTEGER PRIMARY KEY,

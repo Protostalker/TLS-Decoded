@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from auth import verify_device
 from database import get_db
-from models import PendingPriceUpdate, Station
+from models import PendingPriceUpdate, PendingTankUpdate, Station
 from schemas import IngestBatch, IngestResult
 
 router = APIRouter()
@@ -37,22 +37,23 @@ def ingest_batch(
                 """
                 INSERT INTO cloud_tanks
                     (station_id, local_id, name, product, capacity_gallons,
-                     reorder_threshold_gallons, active, updated_at)
+                     reorder_threshold_gallons, active, display_order, updated_at)
                 VALUES
-                    (:sid, :lid, :name, :product, :cap, :reo, :active, :upd)
+                    (:sid, :lid, :name, :product, :cap, :reo, :active, :dord, :upd)
                 ON CONFLICT (station_id, local_id) DO UPDATE SET
                     name = EXCLUDED.name,
                     product = EXCLUDED.product,
                     capacity_gallons = EXCLUDED.capacity_gallons,
                     reorder_threshold_gallons = EXCLUDED.reorder_threshold_gallons,
                     active = EXCLUDED.active,
+                    display_order = EXCLUDED.display_order,
                     updated_at = EXCLUDED.updated_at
                 """
             ),
             {
                 "sid": station.id, "lid": t.local_id, "name": t.name, "product": t.product,
                 "cap": t.capacity_gallons, "reo": t.reorder_threshold_gallons,
-                "active": t.active, "upd": t.updated_at,
+                "active": t.active, "dord": t.display_order, "upd": t.updated_at,
             },
         )
         counts["tanks"] += 1
@@ -261,5 +262,50 @@ def update_check_request(db: Session = Depends(get_db), station: Station = Depen
 @router.post("/ingest/update-check-request/ack")
 def ack_update_check_request(db: Session = Depends(get_db), station: Station = Depends(verify_device)):
     station.update_check_acked_at = datetime.now(tz=timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
+# ── Tank-config updates queued from the cloud side (T1 Grades panel) ────────
+#
+# The grade/tank-config twin of the price-update endpoints above, same
+# contract: an admin correcting a mislabeled or misordered grade from the
+# cloud only writes a PendingTankUpdate row (see routers/stations.py's
+# submit_tank_config_update / reorder_tanks). This station's own sync
+# container pulls its pending rows on its regular tick, applies them to the
+# LOCAL tanks table (the source of truth), and acks. The corrected tank row
+# then flows back up to cloud_tanks through the normal one-way push — the
+# "Local Instance never accepts inbound connections" property holds exactly
+# as it does for pricing and the update-check trigger.
+
+@router.get("/ingest/tank-updates")
+def pending_tank_updates(db: Session = Depends(get_db), station: Station = Depends(verify_device)):
+    rows = (
+        db.query(PendingTankUpdate)
+        .filter(PendingTankUpdate.station_id == station.id, PendingTankUpdate.applied_at.is_(None))
+        .order_by(PendingTankUpdate.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": r.id, "tank_local_id": r.tank_local_id,
+            "set_name": r.set_name, "name": r.name,
+            "set_product": r.set_product, "product": r.product,
+            "set_active": r.set_active, "active": r.active,
+            "set_display_order": r.set_display_order, "display_order": r.display_order,
+            "note": r.note, "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/ingest/tank-updates/{update_id}/ack")
+def ack_tank_update(update_id: int, db: Session = Depends(get_db), station: Station = Depends(verify_device)):
+    row = db.query(PendingTankUpdate).filter(
+        PendingTankUpdate.id == update_id, PendingTankUpdate.station_id == station.id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Tank update not found")
+    row.applied_at = datetime.now(tz=timezone.utc)
     db.commit()
     return {"ok": True}

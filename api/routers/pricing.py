@@ -50,6 +50,17 @@ def _default_tax_rate_percent(db: Session) -> Optional[float]:
         return None
 
 
+def _default_additional_fee_per_gallon(db: Session) -> Optional[float]:
+    row = db.query(Setting).filter(Setting.key == "default_additional_fee_per_gallon").first()
+    raw = (row.value if row else None) or os.environ.get("DEFAULT_ADDITIONAL_FEE_PER_GALLON")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 def _latest_price(db: Session, tank_id: int) -> Optional[FuelPrice]:
     return (
         db.query(FuelPrice)
@@ -69,8 +80,9 @@ def _tax_dollars(cost: float, tax_rate_percent: Optional[float], tax_fees_per_ga
 def _compute(p: FuelPrice) -> FuelPriceOut:
     cost = float(p.cost_per_gallon or 0)
     tax = float(p.tax_fees_per_gallon or 0)
+    fee = float(p.additional_fee_per_gallon or 0)
     sale = float(p.sale_price_per_gallon or 0)
-    breakeven = round(cost + tax, 6)
+    breakeven = round(cost + tax + fee, 6)
     margin = round(sale - breakeven, 6)
     margin_pct = round((margin / sale) * 100, 4) if sale else None
 
@@ -81,6 +93,7 @@ def _compute(p: FuelPrice) -> FuelPriceOut:
         cost_per_gallon=cost,
         tax_rate_percent=float(p.tax_rate_percent) if p.tax_rate_percent is not None else None,
         tax_fees_per_gallon=tax,
+        additional_fee_per_gallon=fee,
         sale_price_per_gallon=sale,
         source=p.source,
         note=p.note,
@@ -155,12 +168,22 @@ def add_price(tank_id: int, body: FuelPriceCreate, db: Session = Depends(get_db)
     if tax_rate is None and body.tax_fees_per_gallon is None:
         tax_rate = _default_tax_rate_percent(db)
 
+    # Sticky like cost/sale: explicit value wins, else carry forward from the
+    # prior row, else fall back to the station default setting.
+    if body.additional_fee_per_gallon is not None:
+        fee = body.additional_fee_per_gallon
+    elif prior is not None and prior.additional_fee_per_gallon is not None:
+        fee = float(prior.additional_fee_per_gallon)
+    else:
+        fee = _default_additional_fee_per_gallon(db)
+
     row = FuelPrice(
         tank_id=tank_id,
         effective_at=body.effective_at or datetime.now(tz=timezone.utc),
         cost_per_gallon=cost,
         tax_rate_percent=tax_rate,
         tax_fees_per_gallon=_tax_dollars(cost, tax_rate, body.tax_fees_per_gallon),
+        additional_fee_per_gallon=fee,
         sale_price_per_gallon=sale,
         source=body.source or "manual",
         note=body.note,
@@ -187,6 +210,8 @@ def update_price(price_id: int, body: FuelPriceUpdate, db: Session = Depends(get
         # setting a rate (rate always wins so the two can't fight).
         row.tax_rate_percent = None
         row.tax_fees_per_gallon = body.tax_fees_per_gallon
+    if body.additional_fee_per_gallon is not None:
+        row.additional_fee_per_gallon = body.additional_fee_per_gallon
     if body.sale_price_per_gallon is not None:
         row.sale_price_per_gallon = body.sale_price_per_gallon
     if body.effective_at is not None:

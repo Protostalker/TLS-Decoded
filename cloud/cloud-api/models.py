@@ -149,6 +149,51 @@ class PendingPriceUpdate(Base):
     applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+class PendingTankUpdate(Base):
+    """
+    The second narrow exception to "v1 sync is one-way (station -> cloud)",
+    built on exactly the same rails as PendingPriceUpdate: a tank's config
+    (its grade/product label, display name, active flag, or display order)
+    can be corrected from the cloud side (T1 Grades panel, admin only)
+    without a general remote-config channel and without the cloud ever
+    reaching into a station's network.
+
+    Why this exists: a station whose grades are mislabeled/misordered in the
+    field normally gets fixed on the local client, but when there's no local
+    or network access to that box, there was no way to correct it. This row
+    is the outbound queue for that correction. The station's own `sync`
+    container polls for pending rows (device-credential auth, same as
+    ingest), applies them to the LOCAL tanks table (the source of truth),
+    then acks. The resulting local row flows back up to cloud_tanks through
+    the normal one-way push next cycle — this table is never a second source
+    of truth, just a queue.
+
+    Each field is paired with a set_* flag rather than relying on NULL, so
+    "clear the product to NULL" is distinguishable from "don't touch the
+    product" — the same distinction the local TankUpdate schema draws with
+    model_fields_set, preserved across the queue.
+    """
+    __tablename__ = "pending_tank_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    station_id: Mapped[int] = mapped_column(Integer, ForeignKey("stations.id"), nullable=False)
+    tank_local_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    set_name: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    name: Mapped[str | None] = mapped_column(Text)
+    set_product: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    product: Mapped[str | None] = mapped_column(Text)
+    set_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    active: Mapped[bool | None] = mapped_column(Boolean)
+    set_display_order: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    display_order: Mapped[int | None] = mapped_column(Integer)
+
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
 class UserSession(Base):
     """DB-backed sessions (not JWT) — required because 'never expires' + admin
     revocation together rule out stateless tokens; see CLOUD-ARCHITECTURE.md."""
@@ -179,6 +224,14 @@ class CloudTank(Base):
     capacity_gallons: Mapped[float | None] = mapped_column(Float)
     reorder_threshold_gallons: Mapped[float | None] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Display/sort order for this station's tanks on T1 (and the local
+    # dashboard). NULL sorts last, then by local_id, so a station that has
+    # never had an explicit order set still renders in a stable, sensible
+    # sequence. Set from the cloud Grades panel (admin) -> queued as a
+    # PendingTankUpdate -> applied locally by the station's sync container
+    # -> mirrored back here through the normal one-way push, same path as
+    # any other tank edit.
+    display_order: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 

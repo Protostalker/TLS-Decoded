@@ -57,7 +57,8 @@ def ensure_schema(engine: sqlalchemy.Engine) -> None:
         product TEXT,
         capacity_gallons REAL,
         reorder_threshold_gallons REAL,
-        active BOOLEAN DEFAULT TRUE
+        active BOOLEAN DEFAULT TRUE,
+        display_order INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS fuel_prices (
@@ -67,6 +68,7 @@ def ensure_schema(engine: sqlalchemy.Engine) -> None:
         cost_per_gallon NUMERIC(12,6),
         tax_fees_per_gallon NUMERIC(12,6) DEFAULT 0,
         tax_rate_percent NUMERIC(9,4),
+        additional_fee_per_gallon NUMERIC(12,6),
         sale_price_per_gallon NUMERIC(12,6),
         source TEXT DEFAULT 'manual',
         note TEXT,
@@ -127,6 +129,7 @@ def ensure_schema(engine: sqlalchemy.Engine) -> None:
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS note TEXT",
         "ALTER TABLE fuel_prices ADD COLUMN IF NOT EXISTS tax_rate_percent NUMERIC(9,4)",
         "ALTER TABLE tanks ADD COLUMN IF NOT EXISTS commander_grade_id INTEGER",
+        "ALTER TABLE fuel_prices ADD COLUMN IF NOT EXISTS additional_fee_per_gallon NUMERIC(12,6)",
     ]
     with engine.begin() as conn:
         for m in migrations:
@@ -169,6 +172,10 @@ def seed_settings(engine: sqlalchemy.Engine, cfg: AppConfig) -> None:
         # authoritative afterward, live, for both manual and Commander-synced
         # price entries.
         "default_tax_rate_percent": os.environ.get("DEFAULT_TAX_RATE_PERCENT", ""),
+        # Flat $/gal margin adjustment, same seed-once-then-UI-wins pattern.
+        # Positive reduces margin (e.g. a per-gallon regulatory fee baked
+        # into breakeven), negative increases it. Blank/unset = no adjustment.
+        "default_additional_fee_per_gallon": os.environ.get("DEFAULT_ADDITIONAL_FEE_PER_GALLON", ""),
     }
     with engine.begin() as conn:
         for k, v in defaults.items():

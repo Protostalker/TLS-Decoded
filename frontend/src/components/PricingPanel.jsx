@@ -45,6 +45,7 @@ function Tile({ label, value, accent, sub }) {
 export function PriceForm({ tank, initial, onDone, onCancel }) {
   const [cost, setCost] = useState(initial?.cost_per_gallon ?? '')
   const [sale, setSale] = useState(initial?.sale_price_per_gallon ?? '')
+  const [fee, setFee] = useState(initial?.additional_fee_per_gallon ?? '')
   const [when, setWhen] = useState(initial ? toLocalInputValue(initial.effective_at) : nowLocalInputValue())
   const [note, setNote] = useState(initial?.note ?? '')
   const [saving, setSaving] = useState(false)
@@ -59,6 +60,7 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
       const body = {
         cost_per_gallon: cost === '' ? undefined : Number(cost),
         sale_price_per_gallon: sale === '' ? undefined : Number(sale),
+        additional_fee_per_gallon: fee === '' ? undefined : Number(fee),
         effective_at: when,
         note: note || undefined,
       }
@@ -94,6 +96,11 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
             </div>
           )}
         </div>
+        <div style={{ width: 140 }}>
+          <div style={fieldLabel}>Additional fee / gal</div>
+          <input type="number" step="0.000001" value={fee} onChange={e => setFee(e.target.value)}
+            placeholder="leave blank to keep current" style={inputStyle} />
+        </div>
         <div style={{ width: 190 }}>
           <div style={fieldLabel}>Effective from</div>
           <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} style={inputStyle} />
@@ -108,7 +115,8 @@ export function PriceForm({ tank, initial, onDone, onCancel }) {
         </div>
       </div>
       <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 8 }}>
-        Tax rate is applied automatically (station-wide setting) — no need to enter it here.
+        Tax rate and additional fee default from Settings (station-wide) — only enter the fee above
+        to override it for this entry. Positive reduces margin, negative increases it.
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button style={{ ...btn, background: 'var(--brand-primary, #3b82f6)', border: 'none', color: '#fff' }} disabled={saving} onClick={submit}>
@@ -219,6 +227,9 @@ export default function PricingPanel({ tank }) {
             value={money(current.tax_fees_per_gallon, 4)}
             sub={current.tax_rate_percent != null ? `${current.tax_rate_percent}% of cost` : null}
           />
+          {!!current.additional_fee_per_gallon && (
+            <Tile label="Add'l fee" value={money(current.additional_fee_per_gallon, 4)} />
+          )}
           <Tile label="Breakeven" value={money(current.breakeven_per_gallon, 4)} />
           <Tile
             label="Sale price"
@@ -248,7 +259,9 @@ export default function PricingPanel({ tank }) {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                 <div style={{ fontSize: 12, color: 'var(--brand-text, #cbd5e1)' }}>
-                  cost {money(h.cost_per_gallon, 4)} · tax {h.tax_rate_percent != null ? `${h.tax_rate_percent}% (${money(h.tax_fees_per_gallon, 4)})` : money(h.tax_fees_per_gallon, 4)} · sale {money(h.sale_price_per_gallon, 4)}
+                  cost {money(h.cost_per_gallon, 4)} · tax {h.tax_rate_percent != null ? `${h.tax_rate_percent}% (${money(h.tax_fees_per_gallon, 4)})` : money(h.tax_fees_per_gallon, 4)}
+                  {!!h.additional_fee_per_gallon && <> · fee {money(h.additional_fee_per_gallon, 4)}</>}
+                  {' · sale '}{money(h.sale_price_per_gallon, 4)}
                   {' · '}
                   <span style={{ color: h.margin_per_gallon >= 0 ? '#86efac' : '#fca5a5' }}>
                     margin {money(h.margin_per_gallon, 4)}

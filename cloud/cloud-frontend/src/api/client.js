@@ -65,6 +65,13 @@ export const api = {
     request(`/stations/${id}/tanks/${tankLocalId}/price-updates`, { method: 'POST', body: JSON.stringify(body) }),
   priceUpdates: (id) => request(`/stations/${id}/price-updates`),
 
+  // ── T1: tank config / grade corrections (admin only, cloud -> station) ──
+  submitTankConfigUpdate: (id, tankLocalId, body) =>
+    request(`/stations/${id}/tanks/${tankLocalId}/config-updates`, { method: 'POST', body: JSON.stringify(body) }),
+  reorderTanks: (id, orderedTankLocalIds, note) =>
+    request(`/stations/${id}/tanks/reorder`, { method: 'POST', body: JSON.stringify({ ordered_tank_local_ids: orderedTankLocalIds, note }) }),
+  tankUpdates: (id) => request(`/stations/${id}/tank-updates`),
+
   // ── Supplier ──
   supplier: {
     stations: () => request('/supplier/stations'),

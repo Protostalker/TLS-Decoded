@@ -232,6 +232,41 @@ one-way push on the next cycle. The panel shows "queued" vs. "applied at
 {time}" so it's honest about the latency — usually seconds if the station
 is online, longer if it's offline until it reconnects.
 
+## Grades & tank config (cloud → station, admin only)
+
+Each station's T1 dashboard has a **Grades & tank config** panel, visible to
+**admins only** (grade labels and ordering change how every number on the
+station is captioned, a tighter gate than pricing). It exists for the case
+that motivated it: a station whose grades are mislabeled or in the wrong
+order is normally fixed on the local client, but when there's no local or
+network access to that box there was previously no way to correct it.
+
+It works on the exact same rails as Pricing above. v1 sync is one-way
+(station → cloud), so an edit here never writes to the station directly — it
+queues a `PendingTankUpdate` row. The station's own `sync` container polls
+`/ingest/tank-updates` every ~15s tick (independent of its push interval),
+applies the change to the local `tanks` table — the source of truth — and
+acks. The edit fires the `tanks` `updated_at` trigger, so the corrected row
+flows back up to `cloud_tanks` through the normal one-way push next cycle and
+the panel reflects it. Nothing ever connects inbound to the station; the
+"Local Instance never accepts inbound connections" property holds exactly as
+it does for pricing and the update-check trigger.
+
+What it can correct, per tank:
+
+- **Grade / product label** and **display name** — fixes a mixed-up grade.
+- **Active flag** — hide/show a tank.
+- **Display order** — a "Reorder tanks" mode queues one `display_order` per
+  tank (a new `display_order` column on `tanks` / `cloud_tanks`; NULL sorts
+  last, then by id, so stations that never set an order are unaffected).
+
+Each field carries a `set_*` flag through the queue so "clear the grade to
+nothing" is distinguishable from "leave it alone" — the same distinction the
+local `TankUpdate` draws with `model_fields_set`. The panel shows "queued"
+vs. "applied" with the same latency honesty as the price-update list. The
+local poller's `sync_tanks` only re-asserts `active` from YAML and never
+stomps name/product/order, so a cloud-applied correction sticks.
+
 ## Branding (station → cloud, mirrored — not editable from the cloud)
 
 A station's Branding settings (preset/colors/logo, set locally in Settings

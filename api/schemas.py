@@ -27,6 +27,7 @@ class TankOut(BaseModel):
     capacity_gallons: Optional[float]
     reorder_threshold_gallons: Optional[float]
     active: bool
+    display_order: Optional[int] = None
     commander_grade_id: Optional[int] = None
     latest_reading: Optional[ReadingOut] = None
 
@@ -103,6 +104,9 @@ class TankUpdate(BaseModel):
     product: Optional[str] = None
     capacity_gallons: Optional[float] = None
     reorder_threshold_gallons: Optional[float] = None
+    # NULL sorts last; lower = higher on the dashboard. Set from the local
+    # dashboard or carried in from a cloud-side grade correction.
+    display_order: Optional[int] = None
     # Optional[int] with no default sentinel: whether this was actually sent
     # (vs. just defaulted) is checked via model_fields_set in the router, so
     # sending commander_grade_id: null explicitly clears it (disconnects the
@@ -120,6 +124,9 @@ class FuelPriceOut(BaseModel):
     cost_per_gallon: float
     tax_rate_percent: Optional[float] = None
     tax_fees_per_gallon: float  # dollar amount — derived from tax_rate_percent when a rate is set
+    # Flat $/gal, positive reduces margin, negative increases it. See
+    # FuelPrice.additional_fee_per_gallon / default_additional_fee_per_gallon.
+    additional_fee_per_gallon: Optional[float] = None
     sale_price_per_gallon: float
     source: str
     note: Optional[str] = None
@@ -146,6 +153,11 @@ class FuelPriceCreate(BaseModel):
     # entered per price change). Set explicitly only for a one-off override.
     tax_rate_percent: Optional[float] = None
     tax_fees_per_gallon: Optional[float] = None
+    # Flat $/gal, "sticky" like cost/sale above: omit to carry forward from
+    # the prior row, or fall back to default_additional_fee_per_gallon if
+    # there's no prior row either. Positive reduces margin, negative
+    # increases it — see FuelPrice.additional_fee_per_gallon.
+    additional_fee_per_gallon: Optional[float] = None
     effective_at: Optional[datetime] = None
     note: Optional[str] = None
     # "manual" (default, from the dashboard) vs "commander_auto" (from the
@@ -157,6 +169,7 @@ class FuelPriceUpdate(BaseModel):
     cost_per_gallon: Optional[float] = None
     tax_rate_percent: Optional[float] = None
     tax_fees_per_gallon: Optional[float] = None
+    additional_fee_per_gallon: Optional[float] = None
     sale_price_per_gallon: Optional[float] = None
     effective_at: Optional[datetime] = None
     note: Optional[str] = None
@@ -194,6 +207,11 @@ class SettingsOut(BaseModel):
     # Applied automatically to new price entries (manual or Commander-synced)
     # when a rate isn't given explicitly — see api/routers/pricing.py.
     default_tax_rate_percent: Optional[float] = None
+    # Flat $/gal, station-wide — see FuelPrice.additional_fee_per_gallon.
+    # Positive reduces margin (e.g. a per-gallon regulatory fee baked in for
+    # customers who want it reflected), negative increases it. Optional,
+    # defaults to no adjustment (0) when unset.
+    default_additional_fee_per_gallon: Optional[float] = None
     # Branding — see routers/settings.py's _brand_defaults()/validation.
     brand_preset: str
     brand_primary_color: str
@@ -232,6 +250,7 @@ class SettingsUpdate(BaseModel):
     commander_price_tier: Optional[str] = None
     commander_sync_interval_minutes: Optional[int] = None
     default_tax_rate_percent: Optional[float] = None
+    default_additional_fee_per_gallon: Optional[float] = None
     brand_preset: Optional[str] = None
     brand_primary_color: Optional[str] = None
     brand_secondary_color: Optional[str] = None

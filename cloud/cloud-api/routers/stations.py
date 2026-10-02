@@ -17,10 +17,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from auth import assigned_station_ids, get_current_user, require_not_degraded, require_station_access
+from auth import assigned_station_ids, get_current_user, require_admin, require_not_degraded, require_station_access
 from database import get_db
-from models import CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, PendingPriceUpdate, Station, User
-from schemas import PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut, TankOut
+from models import (
+    CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank,
+    PendingPriceUpdate, PendingTankUpdate, Station, User,
+)
+from schemas import (
+    PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut,
+    TankConfigUpdateOut, TankConfigUpdateRequest, TankOut, TankReorderRequest,
+)
 from weather import get_station_weather
 
 # Every route here serves station data to T1/T2 — gated by license state, per
@@ -270,7 +276,7 @@ def combined_stats(user: User = Depends(get_current_user), db: Session = Depends
         tanks = (
             db.query(CloudTank)
             .filter(CloudTank.station_id == s.id, CloudTank.active == True)  # noqa: E712
-            .order_by(CloudTank.local_id)
+            .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
             .all()
         )
         tank_stats = [_compute_tank_stats(db, s, t) for t in tanks]
@@ -361,7 +367,7 @@ def station_dashboard(station_id: int, user: User = Depends(get_current_user), d
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.local_id)
+        .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
         .all()
     )
 
@@ -374,6 +380,7 @@ def station_dashboard(station_id: int, user: User = Depends(get_current_user), d
             local_id=tank.local_id, name=tank.name, product=tank.product,
             capacity_gallons=tank.capacity_gallons, reorder_threshold_gallons=tank.reorder_threshold_gallons,
             active=tank.active,
+            display_order=tank.display_order,
             latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
         ))
 
@@ -442,7 +449,7 @@ def station_tanks(station_id: int, user: User = Depends(get_current_user), db: S
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.local_id)
+        .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
         .all()
     )
     out = []
@@ -452,6 +459,7 @@ def station_tanks(station_id: int, user: User = Depends(get_current_user), db: S
             local_id=tank.local_id, name=tank.name, product=tank.product,
             capacity_gallons=tank.capacity_gallons, reorder_threshold_gallons=tank.reorder_threshold_gallons,
             active=tank.active,
+            display_order=tank.display_order,
             latest_reading=ReadingOut.model_validate(latest, from_attributes=True) if latest else None,
         ))
     return out
@@ -620,13 +628,121 @@ def list_price_updates(
     return [_price_update_out(r) for r in rows]
 
 
+# ── Tank config / grade correction from the cloud side (T1 Grades panel) ────
+#
+# Admin-only (grade/order corrections touch how every number on the station
+# is labeled, so this is a tighter gate than pricing, which any assigned
+# non-supplier can submit). v1 sync is one-way, so like pricing this queues a
+# PendingTankUpdate rather than writing to the station; the station's sync
+# container applies it locally and it mirrors back up. See routers/ingest.py.
+
+def _tank_update_out(r: PendingTankUpdate) -> dict:
+    return {
+        "id": r.id, "station_id": r.station_id, "tank_local_id": r.tank_local_id,
+        "set_name": r.set_name, "name": r.name,
+        "set_product": r.set_product, "product": r.product,
+        "set_active": r.set_active, "active": r.active,
+        "set_display_order": r.set_display_order, "display_order": r.display_order,
+        "note": r.note, "created_at": r.created_at, "applied_at": r.applied_at,
+    }
+
+
+@router.post("/stations/{station_id}/tanks/{tank_local_id}/config-updates", response_model=TankConfigUpdateOut)
+def submit_tank_config_update(
+    station_id: int, tank_local_id: int, body: TankConfigUpdateRequest,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+    if not db.query(CloudTank).filter(CloudTank.station_id == station_id, CloudTank.local_id == tank_local_id).first():
+        raise HTTPException(status_code=404, detail="Tank not found")
+
+    fields_set = body.model_fields_set
+    set_name = "name" in fields_set
+    set_product = "product" in fields_set
+    set_active = "active" in fields_set
+    set_display_order = "display_order" in fields_set
+    if not (set_name or set_product or set_active or set_display_order):
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if set_name and (body.name is None or not body.name.strip()):
+        raise HTTPException(status_code=400, detail="name cannot be blank")
+    if set_display_order and body.display_order is not None and body.display_order < 0:
+        raise HTTPException(status_code=400, detail="display_order must be >= 0")
+
+    row = PendingTankUpdate(
+        station_id=station_id, tank_local_id=tank_local_id,
+        set_name=set_name, name=body.name if set_name else None,
+        set_product=set_product, product=body.product if set_product else None,
+        set_active=set_active, active=body.active if set_active else None,
+        set_display_order=set_display_order, display_order=body.display_order if set_display_order else None,
+        note=body.note, created_by_user_id=user.id, created_at=datetime.now(tz=timezone.utc),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _tank_update_out(row)
+
+
+@router.post("/stations/{station_id}/tanks/reorder")
+def reorder_tanks(
+    station_id: int, body: TankReorderRequest,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+    known = {
+        t.local_id for t in
+        db.query(CloudTank).filter(CloudTank.station_id == station_id).all()
+    }
+    ids = body.ordered_tank_local_ids
+    if not ids:
+        raise HTTPException(status_code=400, detail="ordered_tank_local_ids is empty")
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=400, detail="Duplicate tank ids in order")
+    unknown = [i for i in ids if i not in known]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"Unknown tank ids: {unknown}")
+
+    now = datetime.now(tz=timezone.utc)
+    queued = []
+    for position, tlid in enumerate(ids):
+        row = PendingTankUpdate(
+            station_id=station_id, tank_local_id=tlid,
+            set_display_order=True, display_order=position,
+            note=body.note, created_by_user_id=user.id, created_at=now,
+        )
+        db.add(row)
+        queued.append(row)
+    db.commit()
+    for r in queued:
+        db.refresh(r)
+    return {"queued": [_tank_update_out(r) for r in queued]}
+
+
+@router.get("/stations/{station_id}/tank-updates")
+def list_tank_updates(
+    station_id: int, limit: int = 30,
+    user: User = Depends(require_admin), db: Session = Depends(get_db),
+):
+    """Recent tank-config update requests (pending + applied), so the Grades
+    panel can show 'queued, waiting for the station to apply' vs 'applied at
+    {time}', same latency honesty as the price-update list."""
+    require_station_access(station_id, db, user)
+    rows = (
+        db.query(PendingTankUpdate)
+        .filter(PendingTankUpdate.station_id == station_id)
+        .order_by(PendingTankUpdate.created_at.desc())
+        .limit(min(limit, 200))
+        .all()
+    )
+    return [_tank_update_out(r) for r in rows]
+
+
 @router.get("/stations/{station_id}/stats/summary")
 def station_stats_summary(station_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     station = require_station_access(station_id, db, user)
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
-        .order_by(CloudTank.local_id)
+        .order_by(CloudTank.display_order.asc().nullslast(), CloudTank.local_id)
         .all()
     )
     tank_stats = [_compute_tank_stats(db, station, t) for t in tanks]

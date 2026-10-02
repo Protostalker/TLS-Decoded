@@ -27,7 +27,7 @@ WATER_ALERT_INCHES = 1.0
 def _effective_margin(tank_id: int, at: datetime, db: Session) -> Optional[float]:
     """
     Return the margin/gal in effect as of `at` (tz-aware), or None if no
-    price has been entered yet.  Margin = sale_price - cost - tax_fees.
+    price has been entered yet.  Margin = sale_price - cost - tax_fees - fee.
 
     Uses the same point-in-time lookup as the pricing router: the most recent
     fuel_prices row with effective_at <= `at`.  Retroactively editing a price
@@ -43,8 +43,9 @@ def _effective_margin(tank_id: int, at: datetime, db: Session) -> Optional[float
         return None
     cost = float(row.cost_per_gallon or 0)
     tax  = float(row.tax_fees_per_gallon or 0)
+    fee  = float(row.additional_fee_per_gallon or 0)
     sale = float(row.sale_price_per_gallon or 0)
-    return round(sale - cost - tax, 6)
+    return round(sale - cost - tax - fee, 6)
 
 
 def _build_daily_breakdown(tank_id: int, num_days: int, db: Session) -> list[dict]:

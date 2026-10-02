@@ -83,6 +83,10 @@ services:
       # Applied automatically to new price entries when a tax rate isn't
       # given explicitly — see "Commander price sync" in .env.example.
       DEFAULT_TAX_RATE_PERCENT: ${DEFAULT_TAX_RATE_PERCENT:-}
+      # Flat $/gal margin adjustment (e.g. a per-gallon regulatory/storage
+      # fee), applied automatically like the tax rate above. Positive
+      # reduces margin, negative increases it. See .env.example.
+      DEFAULT_ADDITIONAL_FEE_PER_GALLON: ${DEFAULT_ADDITIONAL_FEE_PER_GALLON:-}
     volumes:
       - ./config:/app/config:ro
     ports:
@@ -115,6 +119,7 @@ services:
       COMMANDER_PRICE_SYNC_INTERVAL_MINUTES: ${COMMANDER_PRICE_SYNC_INTERVAL_MINUTES:-60}
       COMMANDER_HEARTBEAT_INTERVAL_MINUTES: ${COMMANDER_HEARTBEAT_INTERVAL_MINUTES:-5}
       DEFAULT_TAX_RATE_PERCENT: ${DEFAULT_TAX_RATE_PERCENT:-}
+      DEFAULT_ADDITIONAL_FEE_PER_GALLON: ${DEFAULT_ADDITIONAL_FEE_PER_GALLON:-}
     volumes:
       - ./config:/app/config:ro
     restart: unless-stopped

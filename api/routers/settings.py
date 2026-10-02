@@ -101,6 +101,10 @@ def _commander_defaults() -> dict:
         "commander_last_connected": "",
         "commander_last_error": "",
         "default_tax_rate_percent": os.environ.get("DEFAULT_TAX_RATE_PERCENT", ""),
+        # Flat $/gal margin adjustment — same seed-once-then-UI-wins pattern,
+        # also normally seeded by the poller (DEFAULT_ADDITIONAL_FEE_PER_GALLON).
+        # Positive reduces margin, negative increases it. Blank = no adjustment.
+        "default_additional_fee_per_gallon": os.environ.get("DEFAULT_ADDITIONAL_FEE_PER_GALLON", ""),
     }
 
 
@@ -204,6 +208,10 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         default_tax_rate_percent=(
             float(v["default_tax_rate_percent"])
             if (v.get("default_tax_rate_percent") or "").strip() else None
+        ),
+        default_additional_fee_per_gallon=(
+            float(v["default_additional_fee_per_gallon"])
+            if (v.get("default_additional_fee_per_gallon") or "").strip() else None
         ),
         brand_preset=v.get("brand_preset") or "default",
         brand_primary_color=v.get("brand_primary_color") or "#3b82f6",
@@ -309,6 +317,11 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
         if update.default_tax_rate_percent < 0:
             raise HTTPException(status_code=400, detail="default_tax_rate_percent must be >= 0")
         _set(db, "default_tax_rate_percent", str(update.default_tax_rate_percent))
+
+    # No >= 0 constraint here — negative values are intentional (a fee that
+    # increases margin instead of reducing it), unlike tax rate above.
+    if update.default_additional_fee_per_gallon is not None:
+        _set(db, "default_additional_fee_per_gallon", str(update.default_additional_fee_per_gallon))
 
     # ── Branding ──────────────────────────────────────────────────────────
     if update.brand_preset is not None:

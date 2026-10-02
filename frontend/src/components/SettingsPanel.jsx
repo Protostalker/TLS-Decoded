@@ -133,6 +133,12 @@ export default function SettingsPanel({ open, onClose }) {
   // pattern as everything else on this panel.
   const [taxRate, setTaxRate] = useState('')
 
+  // Additional margin fee — a flat $/gal adjustment on top of tax, applied
+  // to every new price entry unless overridden per-entry. Positive reduces
+  // margin (e.g. a per-gallon regulatory/storage fee baked in), negative
+  // increases it. Same live-settings pattern as tax rate above.
+  const [additionalFee, setAdditionalFee] = useState('')
+
   // Branding — theme colors + logo for this station's dashboard.
   const [brandPreset, setBrandPreset] = useState('default')
   const [brandPrimary, setBrandPrimary] = useState('var(--brand-primary, #3b82f6)')
@@ -164,6 +170,7 @@ export default function SettingsPanel({ open, onClose }) {
       setUpdateCheckEnabled(s.update_check_enabled)
       setUpdateCheckIntervalDays(s.update_check_interval_days)
       setTaxRate(s.default_tax_rate_percent ?? '')
+      setAdditionalFee(s.default_additional_fee_per_gallon ?? '')
       setBrandPreset(s.brand_preset)
       setBrandPrimary(s.brand_primary_color)
       setBrandSecondary(s.brand_secondary_color)
@@ -332,6 +339,11 @@ export default function SettingsPanel({ open, onClose }) {
   const saveTaxRate = () => save(
     { default_tax_rate_percent: taxRate === '' ? null : Number(taxRate) },
     'Tax rate saved — applied automatically to new price entries from now on.',
+  )
+
+  const saveAdditionalFee = () => save(
+    { default_additional_fee_per_gallon: additionalFee === '' ? null : Number(additionalFee) },
+    'Additional margin fee saved — applied automatically to new price entries from now on.',
   )
 
   const applyPreset = (id) => {
@@ -840,6 +852,34 @@ export default function SettingsPanel({ open, onClose }) {
                   disabled={saving}
                   style={{ ...btn(true), padding: '8px 16px' }}
                   onClick={saveTaxRate}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--brand-border, #2d3348)', margin: '4px 0 20px' }} />
+
+            {/* Additional margin fee */}
+            <div style={row}>
+              <label style={label}>Additional margin fee</label>
+              <div style={hint}>
+                A flat $/gal adjustment applied on top of tax to every new price entry — e.g. a
+                2¢ underground storage tank fee baked into breakeven. Positive reduces margin,
+                negative increases it. Leave blank for no adjustment.
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <input
+                  type="number" step="0.000001"
+                  value={additionalFee}
+                  onChange={e => setAdditionalFee(e.target.value)}
+                  placeholder="e.g. 0.02 or -0.01"
+                  style={inputStyle}
+                />
+                <button
+                  disabled={saving}
+                  style={{ ...btn(true), padding: '8px 16px' }}
+                  onClick={saveAdditionalFee}
                 >
                   Save
                 </button>

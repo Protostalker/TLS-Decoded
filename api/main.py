@@ -46,6 +46,8 @@ def startup_event():
         "ALTER TABLE delivery_events ADD COLUMN IF NOT EXISTS note TEXT",
         "ALTER TABLE fuel_prices ADD COLUMN IF NOT EXISTS tax_rate_percent NUMERIC(9,4)",
         "ALTER TABLE tanks ADD COLUMN IF NOT EXISTS commander_grade_id INTEGER",
+        "ALTER TABLE fuel_prices ADD COLUMN IF NOT EXISTS additional_fee_per_gallon NUMERIC(12,6)",
+        "ALTER TABLE tanks ADD COLUMN IF NOT EXISTS display_order INTEGER",
     ]
     with engine.begin() as conn:
         for m in migrations:
@@ -79,7 +81,7 @@ def _load_station_name() -> str:
 def dashboard(db: Session = Depends(get_db)):
     station_name = _load_station_name()
 
-    active_tanks = db.query(Tank).filter(Tank.active == True).order_by(Tank.id).all()
+    active_tanks = db.query(Tank).filter(Tank.active == True).order_by(Tank.display_order.asc().nullslast(), Tank.id).all()
     tank_outs: list[TankOut] = []
     predictions: list[PredictionOut] = []
 

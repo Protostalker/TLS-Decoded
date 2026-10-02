@@ -14,6 +14,7 @@ class IngestTank(BaseModel):
     capacity_gallons: Optional[float] = None
     reorder_threshold_gallons: Optional[float] = None
     active: bool = True
+    display_order: Optional[int] = None
     updated_at: Optional[datetime] = None
 
 
@@ -248,6 +249,7 @@ class TankOut(BaseModel):
     capacity_gallons: Optional[float]
     reorder_threshold_gallons: Optional[float]
     active: bool
+    display_order: Optional[int] = None
     latest_reading: Optional[ReadingOut] = None
 
 
@@ -280,6 +282,48 @@ class PriceUpdateOut(BaseModel):
     tax_fees_per_gallon: Optional[float] = None
     sale_price_per_gallon: Optional[float] = None
     effective_at: datetime
+    note: Optional[str] = None
+    created_at: datetime
+    applied_at: Optional[datetime] = None
+
+
+class TankConfigUpdateRequest(BaseModel):
+    """
+    A cloud-side correction to one tank's config (grade label / name / active
+    / order). Every field is optional AND paired with the ability to clear:
+    omit a key to leave it untouched; send product: null explicitly to clear
+    the grade label. Mirrors the local TankUpdate semantics, carried over the
+    queue via set_* flags on PendingTankUpdate. At least one field must be
+    present or there's nothing to queue.
+    """
+    model_config = ConfigDict(extra="forbid")
+    name: Optional[str] = None
+    product: Optional[str] = None
+    active: Optional[bool] = None
+    display_order: Optional[int] = None
+    note: Optional[str] = None
+
+
+class TankReorderRequest(BaseModel):
+    """Reorder a station's tanks in one shot: the full list of tank local_ids
+    in the desired display order. Each position becomes that tank's
+    display_order (0-based), queued as one PendingTankUpdate per tank."""
+    ordered_tank_local_ids: list[int]
+    note: Optional[str] = None
+
+
+class TankConfigUpdateOut(BaseModel):
+    id: int
+    station_id: int
+    tank_local_id: int
+    set_name: bool
+    name: Optional[str] = None
+    set_product: bool
+    product: Optional[str] = None
+    set_active: bool
+    active: Optional[bool] = None
+    set_display_order: bool
+    display_order: Optional[int] = None
     note: Optional[str] = None
     created_at: datetime
     applied_at: Optional[datetime] = None

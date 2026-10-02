@@ -21,7 +21,7 @@ def _latest_reading(db: Session, tank_id: int) -> Reading | None:
 
 @router.get("/tanks", response_model=list[TankOut])
 def list_tanks(db: Session = Depends(get_db)):
-    tanks = db.query(Tank).filter(Tank.active == True).order_by(Tank.id).all()
+    tanks = db.query(Tank).filter(Tank.active == True).order_by(Tank.display_order.asc().nullslast(), Tank.id).all()
     result = []
     for tank in tanks:
         tank_out = TankOut.model_validate(tank)
@@ -66,6 +66,10 @@ def update_tank(tank_id: int, update: TankUpdate, db: Session = Depends(get_db))
         if update.reorder_threshold_gallons < 0:
             raise HTTPException(status_code=400, detail="reorder_threshold_gallons must be >= 0")
         tank.reorder_threshold_gallons = update.reorder_threshold_gallons
+    if update.display_order is not None:
+        if update.display_order < 0:
+            raise HTTPException(status_code=400, detail="display_order must be >= 0")
+        tank.display_order = update.display_order
 
     # commander_grade_id supports explicit clearing (unlike the fields above),
     # so it's checked via model_fields_set rather than "is not None" — sending

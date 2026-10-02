@@ -65,6 +65,18 @@ def _default_tax_rate_percent(settings: dict) -> Optional[float]:
         return None
 
 
+def _default_additional_fee_per_gallon(settings: dict) -> Optional[float]:
+    """Same settings-table-wins pattern as _default_tax_rate_percent above."""
+    raw = settings.get("default_additional_fee_per_gallon") or os.environ.get("DEFAULT_ADDITIONAL_FEE_PER_GALLON")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("default_additional_fee_per_gallon=%r is not a number — ignoring", raw)
+        return None
+
+
 def _tanks_with_grade_ids(engine: sqlalchemy.Engine) -> list[dict]:
     sql = text(
         "SELECT id, name, commander_grade_id FROM tanks "
@@ -77,7 +89,7 @@ def _tanks_with_grade_ids(engine: sqlalchemy.Engine) -> list[dict]:
 def _latest_price_row(engine: sqlalchemy.Engine, tank_id: int) -> Optional[dict]:
     sql = text(
         """
-        SELECT cost_per_gallon, tax_rate_percent, sale_price_per_gallon
+        SELECT cost_per_gallon, tax_rate_percent, additional_fee_per_gallon, sale_price_per_gallon
         FROM fuel_prices
         WHERE tank_id = :tid
         ORDER BY effective_at DESC
@@ -94,6 +106,7 @@ def _insert_price(
     tank_id: int,
     cost: float,
     tax_rate_percent: Optional[float],
+    additional_fee_per_gallon: Optional[float],
     sale: float,
     grade_id: int,
 ) -> None:
@@ -104,9 +117,10 @@ def _insert_price(
                 """
                 INSERT INTO fuel_prices (
                     tank_id, effective_at, cost_per_gallon, tax_rate_percent,
-                    tax_fees_per_gallon, sale_price_per_gallon, source, note, created_at
+                    tax_fees_per_gallon, additional_fee_per_gallon, sale_price_per_gallon,
+                    source, note, created_at
                 ) VALUES (
-                    :tid, :at, :cost, :rate, :tax, :sale, 'commander_auto', :note, :created
+                    :tid, :at, :cost, :rate, :tax, :fee, :sale, 'commander_auto', :note, :created
                 )
                 """
             ),
@@ -116,6 +130,7 @@ def _insert_price(
                 "cost": cost,
                 "rate": tax_rate_percent,
                 "tax": _tax_dollars(cost, tax_rate_percent),
+                "fee": additional_fee_per_gallon,
                 "sale": sale,
                 "note": f"Auto-synced from commander-reader (grade id {grade_id})",
                 "created": now,
@@ -229,6 +244,7 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
 
         grades_by_id = {g["id"]: g for g in payload.get("grades", [])}
         default_rate = _default_tax_rate_percent(settings)
+        default_fee = _default_additional_fee_per_gallon(settings)
 
         for tank in tanks:
             tank_id, name, grade_id = tank["id"], tank["name"], tank["commander_grade_id"]
@@ -264,15 +280,18 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
             prior_sale = float(prior["sale_price_per_gallon"]) if prior.get("sale_price_per_gallon") is not None else None
             prior_rate = float(prior["tax_rate_percent"]) if prior.get("tax_rate_percent") is not None else None
             rate = default_rate if default_rate is not None else prior_rate
+            prior_fee = float(prior["additional_fee_per_gallon"]) if prior.get("additional_fee_per_gallon") is not None else None
+            fee = default_fee if default_fee is not None else prior_fee
 
             unchanged = (
                 prior_sale is not None and abs(prior_sale - new_sale) < _EPSILON
                 and (prior_rate or 0) == (rate or 0)
+                and (prior_fee or 0) == (fee or 0)
             )
             if unchanged:
                 continue
 
-            _insert_price(engine, tank_id, cost, rate, new_sale, grade_id)
+            _insert_price(engine, tank_id, cost, rate, fee, new_sale, grade_id)
             logger.info(
                 "Commander price sync: tank %r sale price now $%.4f/gal (grade id %d, cost carried "
                 "forward at $%.4f/gal)",
