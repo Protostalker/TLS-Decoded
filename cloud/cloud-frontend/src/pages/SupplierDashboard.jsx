@@ -212,6 +212,9 @@ function TankBar({ tank }) {
   const volDisp = tank.current_volume_gallons != null
     ? `${Math.round(tank.current_volume_gallons).toLocaleString()} gal`
     : '—'
+  const ullageDisp = tank.ullage_gallons != null
+    ? `${Math.round(tank.ullage_gallons).toLocaleString()} ullage`
+    : null
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -234,8 +237,11 @@ function TankBar({ tank }) {
       <div style={{ fontSize: 11, fontWeight: 700, color, width: 38, textAlign: 'right', flexShrink: 0 }}>
         {pctDisp}
       </div>
-      <div style={{ fontSize: 11, color: '#64748b', width: 80, flexShrink: 0 }}>
-        {volDisp}
+      <div style={{ fontSize: 11, width: 170, flexShrink: 0, textAlign: 'right', lineHeight: 1.25 }}>
+        <span style={{ color: '#64748b' }}>{volDisp}</span>
+        {ullageDisp && (
+          <span style={{ color: '#94a3b8' }} title="Ullage — gallons of room left before full">{' · '}{ullageDisp}</span>
+        )}
       </div>
     </div>
   )

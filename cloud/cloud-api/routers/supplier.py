@@ -90,6 +90,13 @@ def _build_supplier_station(db: Session, station: Station) -> dict:
             "override_note": tank.override_note,
             "capacity_gallons": cap,
             "current_volume_gallons": vol,
+            # Ullage = room left before full (what the driver needs to size a
+            # drop). Prefer the TLS-reported ullage from the latest reading;
+            # fall back to capacity - volume if the reading lacks it.
+            "ullage_gallons": (
+                reading.ullage_gallons if (reading and reading.ullage_gallons is not None)
+                else (round(cap - vol, 1) if (cap and vol is not None) else None)
+            ),
             "fill_pct": pct,          # 0.0–1.0, None if no reading
         })
         if pct is not None and (min_pct is None or pct < min_pct):
