@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,9 @@ from schemas import (
     CloudLabelRequest, TankConfigUpdateOut, TankConfigUpdateRequest, TankOut, TankReorderRequest,
 )
 from weather import get_station_weather
+from forecast import (
+    FORECAST_RANGES, PROFILE_DAYS, build_hourly_profile, tank_series, window_grid,
+)
 
 # Every route here serves station data to T1/T2 — gated by license state, per
 # the dev handoff doc's degraded-mode answer: non-admins lose ALL data
@@ -856,6 +859,79 @@ def list_tank_updates(
         .all()
     )
     return [_tank_update_out(r) for r in rows]
+
+
+# ── Fuel depletion forecast graph (cloud T1 only) ───────────────────────────
+#
+# Every active tank on one shared time grid: actual gallons up to each tank's
+# latest synced reading, then a predicted line built from that tank's own
+# hour-of-day selling pattern (last 28 days, station-local time). See
+# forecast.py for the math. Operational data only (gallons, no money), so
+# suppliers, station owners and admins all get the same response.
+
+@router.get("/stations/{station_id}/forecast")
+def station_forecast(
+    station_id: int,
+    range: str = Query("24h", pattern="^(" + "|".join(FORECAST_RANGES) + ")$"),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    station = require_station_access(station_id, db, user)
+    tz = station_tz(station)
+    now = datetime.now(tz=timezone.utc)
+    past_h, future_h, step_h = FORECAST_RANGES[range]
+    anchor, grid = window_grid(now, range, tz)
+    since = min(grid[0], now - timedelta(days=PROFILE_DAYS)) - timedelta(hours=3)
+
+    tanks = (
+        db.query(CloudTank)
+        .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
+        .order_by(func.coalesce(CloudTank.display_order_override, CloudTank.display_order).asc().nullslast(), CloudTank.local_id)
+        .all()
+    )
+
+    tank_outs = []
+    for tank in tanks:
+        rows = [
+            (r[0] if r[0].tzinfo else r[0].replace(tzinfo=timezone.utc), float(r[1])) for r in db.execute(
+                text(
+                    "SELECT polled_at, volume_gallons FROM cloud_readings "
+                    "WHERE station_id = :sid AND tank_local_id = :tlid "
+                    "AND polled_at >= :since AND volume_gallons IS NOT NULL "
+                    "ORDER BY polled_at ASC"
+                ),
+                {"sid": station_id, "tlid": tank.local_id, "since": since},
+            ).fetchall()
+        ]
+        profile = build_hourly_profile(rows, tz)
+        series = tank_series(rows, grid, profile, tz, step_h, tank.reorder_threshold_gallons)
+        tank_outs.append({
+            "tank_local_id": tank.local_id,
+            "name": tank.name_override or tank.name,
+            "product": tank.product_override or tank.product,
+            "name_overridden": tank.name_override is not None,
+            "capacity_gallons": tank.capacity_gallons,
+            "reorder_threshold_gallons": tank.reorder_threshold_gallons,
+            "profile_source": profile["source"] if profile else None,
+            "profile_observed_hours": profile["observed_hours"] if profile else None,
+            "avg_rate_gal_per_hour": round(profile["avg_rate"], 2) if profile else None,
+            "note": None if profile else "Not enough recent data to predict",
+            **series,
+        })
+
+    return {
+        "station_id": station.id,
+        "range": range,
+        "past_hours": past_h,
+        "future_hours": future_h,
+        "step_hours": step_h,
+        "timezone": str(tz),
+        "now": now.isoformat(),
+        "anchor": anchor.isoformat(),
+        "last_sync_at": station.last_sync_at,
+        "times": [t.isoformat() for t in grid],
+        "ranges": list(FORECAST_RANGES),
+        "tanks": tank_outs,
+    }
 
 
 @router.get("/stations/{station_id}/stats/summary")

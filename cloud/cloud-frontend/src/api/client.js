@@ -61,6 +61,7 @@ export const api = {
   stationTankStats: (id, tankLocalId) => request(`/stations/${id}/tanks/${tankLocalId}/stats`),
   stationStatsSummary: (id) => request(`/stations/${id}/stats/summary`),
   stationWeather: (id) => request(`/stations/${id}/weather`),
+  stationForecast: (id, range = '24h') => request(`/stations/${id}/forecast?range=${encodeURIComponent(range)}`),
   submitPriceUpdate: (id, tankLocalId, body) =>
     request(`/stations/${id}/tanks/${tankLocalId}/price-updates`, { method: 'POST', body: JSON.stringify(body) }),
   priceUpdates: (id) => request(`/stations/${id}/price-updates`),

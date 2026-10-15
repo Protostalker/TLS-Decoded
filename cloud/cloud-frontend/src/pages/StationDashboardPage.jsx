@@ -7,6 +7,7 @@ import TankGauge from '../components/TankGauge.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import PricingPanel from '../components/PricingPanel.jsx'
 import GradesPanel from '../components/GradesPanel.jsx'
+import ForecastChart from '../components/ForecastChart.jsx'
 import Footer from '../components/Footer.jsx'
 import { applyBrandTheme } from '../brandTheme.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -127,6 +128,10 @@ export default function StationDashboardPage() {
                 )
               })}
             </div>
+
+            {/* All-tank depletion forecast (cloud only). Gallons only, no
+                money, so suppliers, owners and admins all see it. */}
+            <ForecastChart stationId={id} />
 
             {selectedTank && (
               <PredictionCard prediction={selectedPrediction} />
