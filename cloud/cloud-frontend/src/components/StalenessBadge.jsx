@@ -11,7 +11,7 @@ export default function StalenessBadge({ lastSyncAt, label = 'Cloud data as of' 
     return (
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11,
-        color: '#fca5a5', background: '#450a0a', border: '1px solid #7f1d1d',
+        color: 'var(--brand-danger-text, #fca5a5)', background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid var(--brand-danger-border, #7f1d1d)',
         borderRadius: 999, padding: '4px 10px',
       }}>
         <Dot color="#ef4444" /> Never synced from this station yet

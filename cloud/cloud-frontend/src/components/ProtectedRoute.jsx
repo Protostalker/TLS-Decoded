@@ -27,7 +27,7 @@ export function SupplierRoute({ children }) {
 
 function Centered({ children }) {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand-text-dimmer, #64748b)' }}>
       {children}
     </div>
   )

@@ -72,7 +72,7 @@ function PriceUpdateForm({ stationId, tank, onDone, onCancel }) {
           Queue update
         </button>
         <button style={btn} onClick={onCancel}>Cancel</button>
-        {err && <span style={{ color: '#fca5a5', fontSize: 11 }}>{err}</span>}
+        {err && <span style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 11 }}>{err}</span>}
       </div>
     </div>
   )
@@ -108,7 +108,7 @@ export default function PricingPanel({ stationId, tanks }) {
 
       {pending.length > 0 && (
         <div style={{
-          fontSize: 11, color: '#93c5fd', background: 'var(--brand-primary-soft, #0f1c33)', border: '1px solid #1e3a5f',
+          fontSize: 11, color: 'var(--brand-link, #93c5fd)', background: 'var(--brand-primary-soft, #0f1c33)', border: '1px solid #1e3a5f',
           borderRadius: 8, padding: '8px 10px', marginBottom: 12,
         }}>
           {pending.length} update{pending.length > 1 ? 's' : ''} queued — applied next time the station checks in
@@ -144,7 +144,7 @@ export default function PricingPanel({ stationId, tanks }) {
                   </button>
                 </div>
                 {pendingForTank.length > 0 && (
-                  <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--brand-link, #93c5fd)', marginTop: 6 }}>
                     Queued: sale {money(pendingForTank[0].sale_price_per_gallon, 4)} (submitted{' '}
                     {format(parseISO(pendingForTank[0].created_at), 'MMM d, HH:mm')})
                   </div>

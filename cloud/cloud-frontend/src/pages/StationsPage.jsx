@@ -4,11 +4,12 @@ import { api } from '../api/client.js'
 import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import Footer from '../components/Footer.jsx'
-import { deriveBrandPalette } from '../brandTheme.js'
+import { deriveBrandPalette, overridePalette } from '../brandTheme.js'
+import { useThemeMode } from '../components/ThemeSelector.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const card = {
-  background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 18,
+  background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 14, padding: 18,
 }
 
 // Page chrome (this constant, TopBar, the Overview box, weather roll-up,
@@ -26,6 +27,8 @@ const NEUTRAL_CARD_THEME = {
 // (mirrored up via sync) — no primary/accent means it stays on the neutral
 // default look, same as before branding existed.
 function stationCardTheme(station) {
+  const forced = overridePalette()
+  if (forced) return forced
   if (!station.brand_primary_color && !station.brand_accent_color) return NEUTRAL_CARD_THEME
   return deriveBrandPalette({
     primary: station.brand_primary_color,
@@ -35,6 +38,7 @@ function stationCardTheme(station) {
 }
 
 export default function StationsPage() {
+  useThemeMode() // re-render cards when the viewer switches theme
   const { user } = useAuth()
   const isSupplier = user?.role === 'supplier'
   const [stations, setStations] = useState(null)
@@ -67,17 +71,17 @@ export default function StationsPage() {
     : []
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1117' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--brand-bg, #0f1117)' }}>
       <TopBar title="Your Stations" />
       <main style={{ padding: 24, maxWidth: 1260, margin: '0 auto' }}>
         {error && <ErrorBox message={error} />}
 
         {stations === null && !error && (
-          <div style={{ color: '#64748b', padding: 40, textAlign: 'center' }}>Loading…</div>
+          <div style={{ color: 'var(--brand-text-dimmer, #64748b)', padding: 40, textAlign: 'center' }}>Loading…</div>
         )}
 
         {stations && stations.length === 0 && (
-          <div style={{ ...card, textAlign: 'center', color: '#64748b' }}>
+          <div style={{ ...card, textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)' }}>
             No stations are assigned to your account yet. Ask an admin to assign one.
           </div>
         )}
@@ -85,13 +89,13 @@ export default function StationsPage() {
         {/* Weather warning roll-up — quick "anything I should act on today"
             glance before drilling into any one station. */}
         {stationsWithWarnings.length > 0 && (
-          <div style={{ ...card, marginBottom: 20, border: '1px solid #7f1d1d', background: '#2a1010' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#fca5a5', marginBottom: 10 }}>
+          <div style={{ ...card, marginBottom: 20, border: '1px solid var(--brand-danger-border, #7f1d1d)', background: 'var(--brand-danger-bg, #2a1010)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-danger-text, #fca5a5)', marginBottom: 10 }}>
               Weather heads-up
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {stationsWithWarnings.map(s => (
-                <div key={s.id} style={{ fontSize: 12, color: '#fca5a5' }}>
+                <div key={s.id} style={{ fontSize: 12, color: 'var(--brand-danger-text, #fca5a5)' }}>
                   <strong>{s.name}:</strong> {weather[s.id].top_recommendation}
                   {weather[s.id].recommendation_count > 1 && ` (+${weather[s.id].recommendation_count - 1} more)`}
                 </div>
@@ -106,7 +110,7 @@ export default function StationsPage() {
             "everything at a glance" hub, not just a multi-station feature. */}
         {stations && stations.length > 0 && summary && (
           <div style={{ ...card, marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 12 }}>
               {stations.length > 1 ? 'Overview — all stations' : 'Overview'}
             </div>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
@@ -154,12 +158,12 @@ export default function StationsPage() {
                       </div>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         {stat?.water_alert && (
-                          <span style={{ fontSize: 10, color: '#fca5a5', background: '#450a0a', borderRadius: 6, padding: '2px 6px' }}>
+                          <span style={{ fontSize: 10, color: 'var(--brand-danger-text, #fca5a5)', background: 'var(--brand-danger-bg, #450a0a)', borderRadius: 6, padding: '2px 6px' }}>
                             water
                           </span>
                         )}
                         {!s.active && (
-                          <span style={{ fontSize: 10, color: '#fca5a5', background: '#450a0a', borderRadius: 6, padding: '2px 6px' }}>
+                          <span style={{ fontSize: 10, color: 'var(--brand-danger-text, #fca5a5)', background: 'var(--brand-danger-bg, #450a0a)', borderRadius: 6, padding: '2px 6px' }}>
                             inactive
                           </span>
                         )}
@@ -269,8 +273,8 @@ function Stat({ label, value, compact, theme }) {
 function ErrorBox({ message }) {
   return (
     <div style={{
-      background: '#450a0a', border: '1px solid #ef4444', borderRadius: 10,
-      padding: '14px 18px', color: '#fca5a5', fontSize: 13, marginBottom: 20,
+      background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid #ef4444', borderRadius: 10,
+      padding: '14px 18px', color: 'var(--brand-danger-text, #fca5a5)', fontSize: 13, marginBottom: 20,
     }}>{message}</div>
   )
 }

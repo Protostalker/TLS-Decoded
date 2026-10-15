@@ -38,4 +38,4 @@ export default function Footer() {
   )
 }
 
-const linkStyle = { color: '#93c5fd', textDecoration: 'none' }
+const linkStyle = { color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }

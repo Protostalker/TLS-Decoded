@@ -98,7 +98,7 @@ export default function NotificationBell() {
         style={{
           position: 'relative', background: 'none', border: 'none',
           cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center',
-          color: '#94a3b8', fontSize: 18, lineHeight: 1,
+          color: 'var(--brand-text-dim, #94a3b8)', fontSize: 18, lineHeight: 1,
           minWidth: 36, minHeight: 36, justifyContent: 'center',
         }}
       >
@@ -120,20 +120,20 @@ export default function NotificationBell() {
       {open && (
         <div style={{
           position: 'absolute', top: 44, right: 0, zIndex: 2000,
-          background: '#161b27', border: '1px solid #2d3348',
+          background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border, #2d3348)',
           borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
           width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column',
         }}>
           {/* Header */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '12px 16px', borderBottom: '1px solid #1e2130',
+            padding: '12px 16px', borderBottom: '1px solid var(--brand-border-soft, #1e2130)',
           }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Notifications</div>
             {notifications.some(n => !n.read_at) && (
               <button
                 onClick={markAllRead}
-                style={{ background: 'none', border: 'none', color: '#93c5fd', fontSize: 11, cursor: 'pointer', padding: 0 }}
+                style={{ background: 'none', border: 'none', color: 'var(--brand-link, #93c5fd)', fontSize: 11, cursor: 'pointer', padding: 0 }}
               >
                 Mark all read
               </button>
@@ -143,7 +143,7 @@ export default function NotificationBell() {
           {/* List */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {notifications.length === 0 && (
-              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)', fontSize: 13 }}>
                 No notifications yet
               </div>
             )}
@@ -163,7 +163,7 @@ function NotificationRow({ notification: n, onRead }) {
     <div
       onClick={unread ? onRead : undefined}
       style={{
-        padding: '12px 16px', borderBottom: '1px solid #1e2130',
+        padding: '12px 16px', borderBottom: '1px solid var(--brand-border-soft, #1e2130)',
         cursor: unread ? 'pointer' : 'default',
         background: unread ? '#1a2035' : 'transparent',
         transition: 'background 0.15s',
@@ -174,11 +174,11 @@ function NotificationRow({ notification: n, onRead }) {
           <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, marginTop: 5 }} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, color: '#e2e8f0', lineHeight: 1.4 }}>{n.message}</div>
+          <div style={{ fontSize: 12, color: 'var(--brand-text, #e2e8f0)', lineHeight: 1.4 }}>{n.message}</div>
           {n.eta_note && (
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>ETA: {n.eta_note}</div>
+            <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 3 }}>ETA: {n.eta_note}</div>
           )}
-          <div style={{ fontSize: 10, color: '#475569', marginTop: 4 }}>{timeAgo(n.created_at)}</div>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)', marginTop: 4 }}>{timeAgo(n.created_at)}</div>
         </div>
       </div>
     </div>

@@ -97,6 +97,13 @@ export function deriveBrandPalette({ primary, secondary, accent } = {}) {
     textDim: blend(text, bg, 0.4),
     textDimmer: blend(text, bg, 0.58),
     textFaint: blend(text, bg, 0.72),
+    // Status/link colors that must flip with the background, not the brand:
+    // a light pastel that reads on dark is unreadable on light, and vice versa.
+    link: towardWhite ? '#93c5fd' : '#1d4ed8',
+    dangerText: towardWhite ? '#fca5a5' : '#b91c1c',
+    dangerBg: towardWhite ? '#2a1010' : '#fee2e2',
+    dangerBorder: towardWhite ? '#7f1d1d' : '#fca5a5',
+    isLight: !towardWhite,
   }
 }
 
@@ -115,14 +122,104 @@ const CSS_VAR_MAP = {
   textDim: '--brand-text-dim',
   textDimmer: '--brand-text-dimmer',
   textFaint: '--brand-text-faint',
+  link: '--brand-link',
+  dangerText: '--brand-danger-text',
+  dangerBg: '--brand-danger-bg',
+  dangerBorder: '--brand-danger-border',
 }
 
-export function applyBrandTheme(fields = {}) {
-  const root = document.documentElement
-  const palette = deriveBrandPalette(fields)
+// ── Viewer theme override (Station / Dark / Light) ─────────────────────────
+//
+// A per-viewer choice in the TopBar, remembered in this browser only. It
+// exists for when a station's own brand colors are hard to read: "dark" and
+// "light" replace the station theme everywhere (T1 vars, T2 cards, and the
+// pages that normally use the neutral default), "station" restores the
+// mirrored brand. It never touches the station's branding itself.
 
-  Object.entries(CSS_VAR_MAP).forEach(([key, cssVar]) => {
-    root.style.setProperty(cssVar, palette[key])
-  })
-  return () => Object.values(CSS_VAR_MAP).forEach(cssVar => root.style.removeProperty(cssVar))
+const MODE_KEY = 'tls_cloud_theme_mode'
+export const THEME_MODES = [
+  { key: 'station', label: 'Station theme' },
+  { key: 'dark', label: 'Dark' },
+  { key: 'light', label: 'Light' },
+]
+
+// Fixed presets, with text tiers a step stronger than the brand derivation
+// so small labels stay legible — the whole point of overriding.
+function fixedPalette(mode) {
+  const base = mode === 'light'
+    ? deriveBrandPalette({ accent: '#f1f5f9', primary: '#2563eb', secondary: '#4f46e5' })
+    : deriveBrandPalette({ accent: '#0f1117', primary: '#3b82f6', secondary: '#6366f1' })
+  return {
+    ...base,
+    surface: mode === 'light' ? '#ffffff' : base.surface,
+    surface2: mode === 'light' ? '#ffffff' : base.surface2,
+    well: mode === 'light' ? '#e2e8f0' : base.well,
+    border: mode === 'light' ? '#cbd5e1' : base.border,
+    borderSoft: mode === 'light' ? '#e2e8f0' : base.borderSoft,
+    textDim: blend(base.text, base.bg, 0.3),
+    textDimmer: blend(base.text, base.bg, 0.45),
+    textFaint: blend(base.text, base.bg, 0.55),
+  }
+}
+
+function readMode() {
+  try {
+    const v = localStorage.getItem(MODE_KEY)
+    return THEME_MODES.some(m => m.key === v) ? v : 'station'
+  } catch { return 'station' }
+}
+
+let currentMode = readMode()
+let stationBrand = null
+const listeners = new Set()
+
+function render() {
+  const root = document.documentElement
+  let palette = null
+  if (currentMode !== 'station') palette = fixedPalette(currentMode)
+  else if (stationBrand) palette = deriveBrandPalette(stationBrand)
+
+  if (palette) {
+    Object.entries(CSS_VAR_MAP).forEach(([key, cssVar]) => root.style.setProperty(cssVar, palette[key]))
+  } else {
+    Object.values(CSS_VAR_MAP).forEach(cssVar => root.style.removeProperty(cssVar))
+  }
+  root.dataset.theme = palette?.isLight ? 'light' : 'dark'
+  root.style.colorScheme = palette?.isLight ? 'light' : 'dark'
+}
+
+export function getThemeMode() { return currentMode }
+
+export function setThemeMode(mode) {
+  if (!THEME_MODES.some(m => m.key === mode)) return
+  currentMode = mode
+  try { localStorage.setItem(MODE_KEY, mode) } catch { /* ignore */ }
+  render()
+  listeners.forEach(fn => fn(mode))
+}
+
+export function subscribeThemeMode(fn) {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
+// Palette a T2 station card should use: the override when one is active,
+// otherwise whatever the card would have used (brand or neutral).
+export function overridePalette() {
+  return currentMode === 'station' ? null : fixedPalette(currentMode)
+}
+
+// Apply once at startup so non-T1 pages honor a saved override too.
+render()
+
+// T1 entry point (unchanged signature): registers this station's brand and
+// returns a cleanup that unregisters it. While an override is active the
+// brand is remembered but not shown.
+export function applyBrandTheme(fields = {}) {
+  stationBrand = fields
+  render()
+  return () => {
+    if (stationBrand === fields) stationBrand = null
+    render()
+  }
 }

@@ -36,13 +36,13 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      background: '#0f1117',
+      background: 'var(--brand-bg, #0f1117)',
     }}>
       <div style={{
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
       }}>
       <form onSubmit={submit} style={{
-        width: 360, background: '#161b27', border: '1px solid #1e2130', borderRadius: 16,
+        width: 360, background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 16,
         padding: 32, display: 'flex', flexDirection: 'column', gap: 16,
       }}>
         <div style={{ textAlign: 'center', marginBottom: 8 }}>
@@ -53,7 +53,7 @@ export default function LoginPage() {
             fontSize: 22, fontWeight: 800, color: '#fff',
           }}>T</div>
           <div style={{ fontWeight: 800, fontSize: 18 }}>TLS-Decoded Cloud</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Sign in to view your station(s)</div>
+          <div style={{ fontSize: 12, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 4 }}>Sign in to view your station(s)</div>
         </div>
 
         <Field label="Email">
@@ -78,8 +78,8 @@ export default function LoginPage() {
 
         {error && (
           <div style={{
-            background: '#450a0a', border: '1px solid #ef4444', borderRadius: 8,
-            padding: '8px 12px', color: '#fca5a5', fontSize: 12,
+            background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid #ef4444', borderRadius: 8,
+            padding: '8px 12px', color: 'var(--brand-danger-text, #fca5a5)', fontSize: 12,
           }}>{error}</div>
         )}
 
@@ -99,7 +99,7 @@ export default function LoginPage() {
 
 function Field({ label, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#94a3b8' }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--brand-text-dim, #94a3b8)' }}>
       {label}
       {children}
     </label>
@@ -107,6 +107,6 @@ function Field({ label, children }) {
 }
 
 const inputStyle = {
-  background: '#0f1117', border: '1px solid #2d3348', borderRadius: 8,
-  padding: '10px 12px', color: '#e2e8f0', fontSize: 14, outline: 'none',
+  background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
+  padding: '10px 12px', color: 'var(--brand-text, #e2e8f0)', fontSize: 14, outline: 'none',
 }

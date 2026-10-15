@@ -75,7 +75,7 @@ function TankConfigForm({ stationId, tank, onDone, onCancel }) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button style={btnPrimary} disabled={saving} onClick={submit}>Queue change</button>
         <button style={btn} onClick={onCancel}>Cancel</button>
-        {err && <span style={{ color: '#fca5a5', fontSize: 11 }}>{err}</span>}
+        {err && <span style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 11 }}>{err}</span>}
       </div>
     </div>
   )
@@ -112,8 +112,8 @@ function CloudLabelForm({ stationId, tank, onDone, onCancel }) {
   }
 
   return (
-    <div style={{ background: 'var(--brand-well, #111827)', border: '1px solid #7f1d1d', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
-      <div style={{ fontSize: 10, color: '#f87171', marginBottom: 8 }}>
+    <div style={{ background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-danger-border, #7f1d1d)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+      <div style={{ fontSize: 10, color: 'var(--brand-danger-text, #f87171)', marginBottom: 8 }}>
         Cloud-only label — shows in red with an asterisk to everyone (including the supplier). Does not change the station. Clear it once the station is fixed.
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -135,7 +135,7 @@ function CloudLabelForm({ stationId, tank, onDone, onCancel }) {
         {(tank.name_override || tank.product_override) &&
           <button style={btn} disabled={saving} onClick={clear}>Clear override</button>}
         <button style={btn} onClick={onCancel}>Cancel</button>
-        {err && <span style={{ color: '#fca5a5', fontSize: 11 }}>{err}</span>}
+        {err && <span style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 11 }}>{err}</span>}
       </div>
     </div>
   )
@@ -221,21 +221,21 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
       </div>
 
       {cloudOrderActive && !reordering && (
-        <div style={{ fontSize: 11, color: '#f87171', background: 'var(--brand-well, #111827)', border: '1px solid #7f1d1d', borderRadius: 8, padding: '8px 10px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, color: 'var(--brand-danger-text, #f87171)', background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-danger-border, #7f1d1d)', borderRadius: 8, padding: '8px 10px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span>Tank order is temporarily set in the cloud only<sup>*</sup> — the station's own order is unchanged.</span>
           <button style={btn} disabled={busy} onClick={clearCloudOrderNow}>Clear cloud order</button>
         </div>
       )}
       {pending.length > 0 && (
         <div style={{
-          fontSize: 11, color: '#93c5fd', background: 'var(--brand-primary-soft, #0f1c33)', border: '1px solid #1e3a5f',
+          fontSize: 11, color: 'var(--brand-link, #93c5fd)', background: 'var(--brand-primary-soft, #0f1c33)', border: '1px solid #1e3a5f',
           borderRadius: 8, padding: '8px 10px', marginBottom: 12,
         }}>
           {pending.length} change{pending.length > 1 ? 's' : ''} queued — applied next time the station checks in
           (usually within seconds if it's online), then reflected here once it syncs back.
         </div>
       )}
-      {err && <div style={{ color: '#fca5a5', fontSize: 11, marginBottom: 10 }}>{err}</div>}
+      {err && <div style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 11, marginBottom: 10 }}>{err}</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {rows.map((tank, idx) => {
@@ -256,7 +256,7 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
                       grade: {tank.product || '—'}{tank.active === false ? ' · inactive' : ''}
                     </div>
                     {(tank.name_override || tank.product_override) && (
-                      <div style={{ fontSize: 11, color: '#f87171', marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: 'var(--brand-danger-text, #f87171)', marginTop: 2 }}>
                         cloud label: {tank.name_override || tank.name}{(tank.product_override || tank.product) ? ` · ${tank.product_override || tank.product}` : ''}<sup>*</sup>
                         <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}> — {tank.override_note || DEFAULT_OVERRIDE_NOTE}</span>
                       </div>
@@ -268,14 +268,14 @@ export default function GradesPanel({ stationId, tanks, onApplied }) {
                     <button style={btn} onClick={() => { setOverrideTankId(null); setEditingTankId(editingTankId === tank.local_id ? null : tank.local_id) }}>
                       {editingTankId === tank.local_id ? '× Cancel' : 'Edit'}
                     </button>
-                    <button style={{ ...btn, borderColor: '#7f1d1d', color: '#f87171' }} onClick={() => { setEditingTankId(null); setOverrideTankId(overrideTankId === tank.local_id ? null : tank.local_id) }}>
+                    <button style={{ ...btn, borderColor: '#7f1d1d', color: 'var(--brand-danger-text, #f87171)' }} onClick={() => { setEditingTankId(null); setOverrideTankId(overrideTankId === tank.local_id ? null : tank.local_id) }}>
                       {overrideTankId === tank.local_id ? '× Cancel' : 'Cloud label'}
                     </button>
                   </div>
                 )}
               </div>
               {pendingForTank.length > 0 && (
-                <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 6 }}>
+                <div style={{ fontSize: 11, color: 'var(--brand-link, #93c5fd)', marginTop: 6 }}>
                   Queued: {pendingForTank.map(u => {
                     const parts = []
                     if (u.set_name) parts.push(`name → ${u.name}`)

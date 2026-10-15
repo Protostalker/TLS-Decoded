@@ -5,6 +5,7 @@ import BrandLogo from './BrandLogo.jsx'
 import LicenseBanner from './LicenseBanner.jsx'
 import NotificationBell from './NotificationBell.jsx'
 import useIsMobile from '../hooks/useIsMobile.js'
+import ThemeSelector from './ThemeSelector.jsx'
 
 // logoDataUrl is only ever passed by StationDashboardPage (T1) — every other
 // caller (T2 station list, Admin, Login) renders the default gradient badge
@@ -47,14 +48,15 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
       {user && !isMobile && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
           {user.role === 'admin' && (
-            <Link to="/admin" style={{ color: '#93c5fd', textDecoration: 'none' }}>Admin</Link>
+            <Link to="/admin" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Admin</Link>
           )}
           {user.role === 'supplier' ? (
-            <Link to="/supplier" style={{ color: '#93c5fd', textDecoration: 'none' }}>Fuel Supply</Link>
+            <Link to="/supplier" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Fuel Supply</Link>
           ) : (
-            <Link to="/" style={{ color: '#93c5fd', textDecoration: 'none' }}>Stations</Link>
+            <Link to="/" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Stations</Link>
           )}
           {user.role !== 'supplier' && <NotificationBell />}
+          <ThemeSelector />
           <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{user.email}</span>
           <button
             onClick={handleLogout}
@@ -67,7 +69,8 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
       )}
 
       {user && isMobile && (
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ThemeSelector compact />
           <button
             onClick={() => setMenuOpen(o => !o)}
             style={{
@@ -105,7 +108,7 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
                 style={{
                   display: 'block', width: '100%', textAlign: 'left',
                   padding: '10px 16px', background: 'none', border: 'none',
-                  color: '#fca5a5', fontSize: 13, cursor: 'pointer',
+                  color: 'var(--brand-danger-text, #fca5a5)', fontSize: 13, cursor: 'pointer',
                 }}
               >
                 Sign out
@@ -127,7 +130,7 @@ function MenuLink({ to, onClick, children }) {
       onClick={onClick}
       style={{
         display: 'block', padding: '10px 16px',
-        color: '#93c5fd', textDecoration: 'none', fontSize: 13,
+        color: 'var(--brand-link, #93c5fd)', textDecoration: 'none', fontSize: 13,
       }}
     >
       {children}

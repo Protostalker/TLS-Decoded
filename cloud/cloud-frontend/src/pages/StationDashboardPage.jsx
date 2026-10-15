@@ -82,8 +82,8 @@ export default function StationDashboardPage() {
 
         {error && !loading && (
           <div style={{
-            background: '#450a0a', border: '1px solid #ef4444', borderRadius: 10,
-            padding: '16px 20px', color: '#fca5a5', fontSize: 13, marginBottom: 20,
+            background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid #ef4444', borderRadius: 10,
+            padding: '16px 20px', color: 'var(--brand-danger-text, #fca5a5)', fontSize: 13, marginBottom: 20,
           }}>
             <strong>Error:</strong> {error}
           </div>
@@ -99,7 +99,7 @@ export default function StationDashboardPage() {
                 Station's own last poll:{' '}
                 {data.last_poll_at ? format(parseISO(data.last_poll_at), 'MMM d, HH:mm:ss') : '—'}
                 {data.last_poll_success === false && (
-                  <span style={{ color: '#fca5a5' }}> (failed: {data.last_poll_error || 'unknown error'})</span>
+                  <span style={{ color: 'var(--brand-danger-text, #fca5a5)' }}> (failed: {data.last_poll_error || 'unknown error'})</span>
                 )}
               </span>
             </div>
@@ -198,7 +198,7 @@ function WeatherPanel({ stationId }) {
         <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {recommendations.map((r, i) => (
             <div key={i} style={{
-              fontSize: 12, color: '#fca5a5', background: '#2a1010', border: '1px solid #7f1d1d',
+              fontSize: 12, color: 'var(--brand-danger-text, #fca5a5)', background: 'var(--brand-danger-bg, #2a1010)', border: '1px solid var(--brand-danger-border, #7f1d1d)',
               borderRadius: 8, padding: '8px 10px',
             }}>
               <strong>{r.period}:</strong> {r.message}

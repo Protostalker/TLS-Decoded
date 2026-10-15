@@ -10,14 +10,14 @@ export default function AdminPage() {
   const [tab, setTab] = useState('Customers')
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1117' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--brand-bg, #0f1117)' }}>
       <TopBar title="Admin — T3" backTo="/" />
       <main style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               background: tab === t ? '#3b82f6' : '#161b27',
-              border: '1px solid #1e2130', borderRadius: 8, padding: '8px 16px',
+              border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 8, padding: '8px 16px',
               color: tab === t ? '#fff' : '#94a3b8', fontSize: 13, cursor: 'pointer', fontWeight: 600,
             }}>{t}</button>
           ))}
@@ -33,20 +33,20 @@ export default function AdminPage() {
   )
 }
 
-const card = { background: '#161b27', border: '1px solid #1e2130', borderRadius: 14, padding: 18, marginBottom: 16 }
+const card = { background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border-soft, #1e2130)', borderRadius: 14, padding: 18, marginBottom: 16 }
 const inputStyle = {
-  background: '#0f1117', border: '1px solid #2d3348', borderRadius: 8,
-  padding: '8px 10px', color: '#e2e8f0', fontSize: 13, outline: 'none',
+  background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
+  padding: '8px 10px', color: 'var(--brand-text, #e2e8f0)', fontSize: 13, outline: 'none',
 }
 const btn = {
   background: '#3b82f6', border: 'none', borderRadius: 8, padding: '8px 14px',
   color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
 }
 const btnGhost = {
-  background: 'transparent', border: '1px solid #2d3348', borderRadius: 8, padding: '6px 10px',
-  color: '#94a3b8', fontSize: 12, cursor: 'pointer',
+  background: 'transparent', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8, padding: '6px 10px',
+  color: 'var(--brand-text-dim, #94a3b8)', fontSize: 12, cursor: 'pointer',
 }
-const th = { padding: '8px 10px', fontWeight: 600, color: '#64748b', textAlign: 'left', fontSize: 11 }
+const th = { padding: '8px 10px', fontWeight: 600, color: 'var(--brand-text-dimmer, #64748b)', textAlign: 'left', fontSize: 11 }
 const td = { padding: '8px 10px', fontSize: 13 }
 
 // ── Customers ─────────────────────────────────────────────────────────────
@@ -86,17 +86,17 @@ function CustomersTab() {
             <thead><tr><th style={th}>Name</th><th style={th}>Stations</th><th style={th}>Users</th><th style={th}>Created</th></tr></thead>
             <tbody>
               {customers?.map(c => (
-                <tr key={c.id} style={{ borderTop: '1px solid #1e2130' }}>
+                <tr key={c.id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
                   <td style={td}>{c.name}</td>
                   <td style={td}>{c.station_count}</td>
                   <td style={td}>{c.user_count}</td>
-                  <td style={{ ...td, color: '#64748b' }}>{new Date(c.created_at).toLocaleDateString()}</td>
+                  <td style={{ ...td, color: 'var(--brand-text-dimmer, #64748b)' }}>{new Date(c.created_at).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {customers?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No customers yet.</div>}
+        {customers?.length === 0 && <div style={{ color: 'var(--brand-text-faint, #475569)', padding: 12, fontSize: 12 }}>No customers yet.</div>}
       </div>
     </div>
   )
@@ -205,10 +205,10 @@ function StationsTab() {
         <div style={{
           ...card, border: '1px solid #3b82f6', background: '#0f1c33',
         }}>
-          <div style={{ fontWeight: 700, marginBottom: 8, color: '#93c5fd' }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--brand-link, #93c5fd)' }}>
             Device credential — shown once, copy it now
           </div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 8 }}>
             Enter these into the station's sync service config (CLOUD_INGEST_URL / STATION_DEVICE_ID / STATION_DEVICE_SECRET
             env vars in docker-compose.yml). This secret cannot be retrieved again — only rotated.
           </div>
@@ -230,14 +230,14 @@ function StationsTab() {
             </thead>
             <tbody>
               {stations?.map(s => (
-                <tr key={s.id} style={{ borderTop: '1px solid #1e2130' }}>
+                <tr key={s.id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
                   <td style={td}>{s.name}</td>
                   <td style={td}>{s.customer_name}</td>
                   <td style={td}>{s.sync_interval_minutes} min</td>
                   <td style={td}><ZipEditor station={s} onSave={saveZip} /></td>
                   <td style={td}><TimezoneEditor station={s} onSave={saveTimezone} /></td>
                   <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
-                  <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>inactive</span>}</td>
+                  <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: 'var(--brand-danger-text, #fca5a5)' }}>inactive</span>}</td>
                   <td style={{ ...td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => rotate(s.id)} style={btnGhost}>Rotate credential</button>
                     <button onClick={() => toggleActive(s)} style={btnGhost}>{s.active ? 'Deactivate' : 'Activate'}</button>
@@ -255,7 +255,7 @@ function StationsTab() {
             </tbody>
           </table>
         </div>
-        {stations?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No stations provisioned yet.</div>}
+        {stations?.length === 0 && <div style={{ color: 'var(--brand-text-faint, #475569)', padding: 12, fontSize: 12 }}>No stations provisioned yet.</div>}
       </div>
     </div>
   )
@@ -318,10 +318,10 @@ function TimezoneEditor({ station, onSave }) {
 function CredentialRow({ label, value }) {
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, marginBottom: 4 }}>
-      <span style={{ color: '#64748b', width: 100 }}>{label}</span>
+      <span style={{ color: 'var(--brand-text-dimmer, #64748b)', width: 100 }}>{label}</span>
       <code style={{
-        background: '#0f1117', border: '1px solid #2d3348', borderRadius: 6,
-        padding: '4px 8px', color: '#e2e8f0', fontFamily: 'monospace', wordBreak: 'break-all',
+        background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 6,
+        padding: '4px 8px', color: 'var(--brand-text, #e2e8f0)', fontFamily: 'monospace', wordBreak: 'break-all',
       }}>{value}</code>
     </div>
   )
@@ -398,11 +398,11 @@ function UsersTab() {
             <tbody>
               {users?.map(u => (
                 <React.Fragment key={u.id}>
-                  <tr style={{ borderTop: '1px solid #1e2130' }}>
+                  <tr style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
                     <td style={td}>{u.email}</td>
                     <td style={td}>{u.role}</td>
                     <td style={td}>{u.customer_name ?? '—'}</td>
-                    <td style={td}>{u.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: '#fca5a5' }}>disabled</span>}</td>
+                    <td style={td}>{u.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: 'var(--brand-danger-text, #fca5a5)' }}>disabled</span>}</td>
                     <td style={td}>{u.assigned_station_ids.length}</td>
                     <td style={{ ...td, display: 'flex', gap: 6 }}>
                       <button onClick={() => setExpandedUser(expandedUser === u.id ? null : u.id)} style={btnGhost}>
@@ -423,7 +423,7 @@ function UsersTab() {
             </tbody>
           </table>
         </div>
-        {users?.length === 0 && <div style={{ color: '#475569', padding: 12, fontSize: 12 }}>No users yet.</div>}
+        {users?.length === 0 && <div style={{ color: 'var(--brand-text-faint, #475569)', padding: 12, fontSize: 12 }}>No users yet.</div>}
       </div>
     </div>
   )
@@ -453,7 +453,7 @@ function SetPasswordForm({ userId }) {
 
   return (
     <form onSubmit={submit} style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>Set password</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 8 }}>Set password</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <input
           type="password" required minLength={8}
@@ -504,17 +504,17 @@ function UserDetail({ user, stations, onChange }) {
   const availableStations = stations?.filter(s => !user.assigned_station_ids.includes(s.id)) ?? []
 
   return (
-    <div style={{ background: '#0f1117', padding: 18 }}>
+    <div style={{ background: 'var(--brand-bg, #0f1117)', padding: 18 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, marginBottom: 0 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>Station assignments</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 10 }}>Station assignments</div>
           {assignedStations.map(s => (
-            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: '1px solid #1e2130' }}>
-              <span>{s.name} <span style={{ color: '#64748b' }}>({s.customer_name})</span></span>
+            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--brand-border-soft, #1e2130)' }}>
+              <span>{s.name} <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>({s.customer_name})</span></span>
               <button onClick={() => unassign(s.id)} style={btnGhost}>Remove</button>
             </div>
           ))}
-          {assignedStations.length === 0 && <div style={{ color: '#475569', fontSize: 12 }}>No stations assigned.</div>}
+          {assignedStations.length === 0 && <div style={{ color: 'var(--brand-text-faint, #475569)', fontSize: 12 }}>No stations assigned.</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <select value={pickStation} onChange={e => setPickStation(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
               <option value="">Assign a station…</option>
@@ -526,25 +526,25 @@ function UserDetail({ user, stations, onChange }) {
 
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>Sessions</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)' }}>Sessions</div>
             <button onClick={revokeAll} style={btnGhost}>Revoke all</button>
           </div>
           {sessions?.map(s => (
-            <div key={s.id} style={{ fontSize: 11, padding: '6px 0', borderBottom: '1px solid #1e2130' }}>
+            <div key={s.id} style={{ fontSize: 11, padding: '6px 0', borderBottom: '1px solid var(--brand-border-soft, #1e2130)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: s.revoked_at ? '#64748b' : '#e2e8f0' }}>
                   {s.user_agent || 'unknown device'} · {s.ip_address || '—'}
                 </span>
                 {!s.revoked_at && <button onClick={() => revokeOne(s.id)} style={btnGhost}>Revoke</button>}
               </div>
-              <div style={{ color: '#475569', marginTop: 2 }}>
+              <div style={{ color: 'var(--brand-text-faint, #475569)', marginTop: 2 }}>
                 last used {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'} ·{' '}
                 expires {s.expires_at ? new Date(s.expires_at).toLocaleDateString() : 'never'}
-                {s.revoked_at && <span style={{ color: '#fca5a5' }}> · revoked</span>}
+                {s.revoked_at && <span style={{ color: 'var(--brand-danger-text, #fca5a5)' }}> · revoked</span>}
               </div>
             </div>
           ))}
-          {sessions?.length === 0 && <div style={{ color: '#475569', fontSize: 12 }}>No sessions.</div>}
+          {sessions?.length === 0 && <div style={{ color: 'var(--brand-text-faint, #475569)', fontSize: 12 }}>No sessions.</div>}
         </div>
       </div>
 
@@ -603,7 +603,7 @@ function LicenseTab() {
           }}>
             {status.status.toUpperCase()}
           </span>
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>
+          <span style={{ color: 'var(--brand-text-dim, #94a3b8)', fontSize: 13 }}>
             {status.customer_name || 'No license configured'}
           </span>
           <button onClick={recheck} disabled={rechecking} style={{ ...btnGhost, marginLeft: 'auto' }}>
@@ -613,7 +613,7 @@ function LicenseTab() {
 
         {status.status === 'degraded' && (
           <div style={{
-            background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 10, padding: 12, marginBottom: 14,
+            background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid var(--brand-danger-border, #7f1d1d)', borderRadius: 10, padding: 12, marginBottom: 14,
             color: '#fecaca', fontSize: 13,
           }}>
             Degraded mode — only admins can see data right now. Non-admin users and suppliers see nothing until this
@@ -688,7 +688,7 @@ function LicenseActivationCard({ config, onChanged }) {
       <div style={{ fontWeight: 700, marginBottom: 4 }}>
         {config?.configured ? 'Replace license' : 'Activate a license'}
       </div>
-      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 14 }}>
         {config?.configured
           ? `Currently configured: passphrase ending …${config.passphrase_hint || '????'}.`
           : 'No license configured yet.'}
@@ -731,8 +731,8 @@ function LicenseActivationCard({ config, onChanged }) {
 
 function Row({ label, value }) {
   return (
-    <tr style={{ borderTop: '1px solid #1e2130' }}>
-      <td style={{ ...td, color: '#64748b', width: 200 }}>{label}</td>
+    <tr style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
+      <td style={{ ...td, color: 'var(--brand-text-dimmer, #64748b)', width: 200 }}>{label}</td>
       <td style={td}>{value}</td>
     </tr>
   )
@@ -740,7 +740,7 @@ function Row({ label, value }) {
 
 function Field({ label, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#94a3b8' }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--brand-text-dim, #94a3b8)' }}>
       {label}
       {children}
     </label>
@@ -750,8 +750,8 @@ function Field({ label, children }) {
 function ErrorBox({ message }) {
   return (
     <div style={{
-      background: '#450a0a', border: '1px solid #ef4444', borderRadius: 10,
-      padding: '10px 14px', color: '#fca5a5', fontSize: 12, marginBottom: 16,
+      background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid #ef4444', borderRadius: 10,
+      padding: '10px 14px', color: 'var(--brand-danger-text, #fca5a5)', fontSize: 12, marginBottom: 16,
     }}>{message}</div>
   )
 }

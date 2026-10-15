@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.js'
+import { useThemeMode } from './ThemeSelector.jsx'
 
 // Cloud T1 only: every active tank on one graph, actual gallons up to the
 // latest synced reading, then a dashed predicted line built from each
@@ -18,6 +19,8 @@ const REFRESH_MS = 5 * 60_000
 
 // Fixed categorical order, picked to stay distinct on the dark surfaces.
 const TANK_COLORS = ['#60a5fa', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#22d3ee', '#f87171', '#a3e635']
+// Same hues, deeper, for light backgrounds (station theme or Light override).
+const TANK_COLORS_LIGHT = ['#2563eb', '#d97706', '#059669', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#65a30d']
 
 const HEIGHT = 300
 const PAD = { top: 16, right: 64, bottom: 30, left: 12 }
@@ -37,6 +40,11 @@ export default function ForecastChart({ stationId }) {
   const [hoverIdx, setHoverIdx] = useState(null)
   const wrapRef = useRef(null)
   const [width, setWidth] = useState(800)
+  const themeMode = useThemeMode()
+  const [isLight, setIsLight] = useState(false)
+  // brandTheme.js stamps data-theme on <html> after applying a palette;
+  // read it after paint so a station's own light theme is caught too.
+  useEffect(() => { setIsLight(document.documentElement.dataset.theme === 'light') })
 
   const load = useCallback(async () => {
     try {
@@ -96,7 +104,8 @@ export default function ForecastChart({ stationId }) {
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(yMax * f))
 
     const tanks = data.tanks.map((tank, i) => {
-      const color = TANK_COLORS[i % TANK_COLORS.length]
+      const palette = isLight ? TANK_COLORS_LIGHT : TANK_COLORS
+      const color = palette[i % palette.length]
       const lastT = tank.last_reading_at ? Date.parse(tank.last_reading_at) : null
       const actual = []   // array of runs (null values break the line)
       let run = []
@@ -120,7 +129,7 @@ export default function ForecastChart({ stationId }) {
     })
 
     return { times, t0, t1, nowMs, x, y, yMax, yTicks, plotW, plotH, tanks, xTicks: makeXTicks(times, plotW, fmt) }
-  }, [data, width, fmt])
+  }, [data, width, fmt, isLight])
 
   const onPointer = (e) => {
     if (!chart) return
@@ -166,7 +175,7 @@ export default function ForecastChart({ stationId }) {
                 <rect
                   x={chart.x(Math.max(chart.nowMs, chart.t0))} y={PAD.top}
                   width={chart.x(chart.t1) - chart.x(Math.max(chart.nowMs, chart.t0))} height={chart.plotH}
-                  fill="var(--brand-text, #e2e8f0)" opacity={0.04}
+                  fill="var(--brand-text, #e2e8f0)" opacity={0.07}
                 />
               )}
 

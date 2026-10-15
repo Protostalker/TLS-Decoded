@@ -74,13 +74,13 @@ export default function SupplierDashboard() {
   }, [load])
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1117', color: '#e2e8f0' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--brand-bg, #0f1117)', color: 'var(--brand-text, #e2e8f0)' }}>
       <TopBar title="Fuel Supply" />
       <main style={{ padding: isMobile ? '16px 12px' : '24px', maxWidth: 920, margin: '0 auto' }}>
 
         {/* Header row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: '#64748b' }}>
+          <div style={{ fontSize: 12, color: 'var(--brand-text-dimmer, #64748b)' }}>
             Stations sorted by urgency — lowest fuel first
           </div>
           <button onClick={load} style={ghostBtn}>⟳ Refresh</button>
@@ -89,11 +89,11 @@ export default function SupplierDashboard() {
         {error && <ErrorBox message={error} />}
 
         {stations === null && !error && (
-          <div style={{ color: '#64748b', padding: 40, textAlign: 'center' }}>Loading…</div>
+          <div style={{ color: 'var(--brand-text-dimmer, #64748b)', padding: 40, textAlign: 'center' }}>Loading…</div>
         )}
 
         {stations?.length === 0 && (
-          <div style={{ color: '#64748b', padding: 40, textAlign: 'center' }}>
+          <div style={{ color: 'var(--brand-text-dimmer, #64748b)', padding: 40, textAlign: 'center' }}>
             No stations are assigned to your account.
           </div>
         )}
@@ -135,7 +135,7 @@ function StationCard({ station, tick, onOrder, isMobile }) {
 
   return (
     <div style={{
-      background: '#161b27', border: `1px solid #1e2130`,
+      background: 'var(--brand-surface-2, #161b27)', border: `1px solid #1e2130`,
       borderLeft: `4px solid ${color}`, borderRadius: 14, padding: 18, marginBottom: 16,
       opacity: snoozed ? 0.7 : 1,
     }}>
@@ -143,9 +143,9 @@ function StationCard({ station, tick, onOrder, isMobile }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <Link to={`/stations/${station.id}`} style={{ textDecoration: 'none' }}>
-            <div style={{ fontWeight: 800, fontSize: 16, color: '#e2e8f0' }}>{station.name}</div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--brand-text, #e2e8f0)' }}>{station.name}</div>
           </Link>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{station.customer_name}</div>
+          <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginTop: 2 }}>{station.customer_name}</div>
         </div>
 
         {/* Urgency badge */}
@@ -158,7 +158,7 @@ function StationCard({ station, tick, onOrder, isMobile }) {
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
             <span style={{ fontWeight: 700, fontSize: 15, color }}>{pctDisp}</span>
             <span style={{ fontSize: 11, color: color + 'cc' }}>{volDisp}</span>
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
+            <span style={{ fontSize: 10, color: 'var(--brand-text-dim, #94a3b8)' }}>{label}</span>
           </div>
           <StalenessBadge lastSyncAt={station.last_sync_at} label="synced" />
         </div>
@@ -173,7 +173,7 @@ function StationCard({ station, tick, onOrder, isMobile }) {
         </div>
       )}
       {station.tanks?.some(t => t.name_overridden || t.product_overridden) && (
-        <div style={{ fontSize: 10, color: '#f87171', marginTop: 6 }}>
+        <div style={{ fontSize: 10, color: 'var(--brand-danger-text, #f87171)', marginTop: 6 }}>
           <sup>*</sup> label corrected by the operator and pending update on the station.
         </div>
       )}
@@ -183,11 +183,11 @@ function StationCard({ station, tick, onOrder, isMobile }) {
         {snoozed ? (
           <div style={{
             background: '#1e3a5f', border: '1px solid #2563eb44', borderRadius: 8,
-            padding: '6px 14px', fontSize: 12, color: '#93c5fd', fontWeight: 600,
+            padding: '6px 14px', fontSize: 12, color: 'var(--brand-link, #93c5fd)', fontWeight: 600,
           }}>
             ✓ Ordered · back in {remaining}
             {station.latest_order?.eta_note && (
-              <span style={{ color: '#64748b', fontWeight: 400 }}> · ETA: {station.latest_order.eta_note}</span>
+              <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontWeight: 400 }}> · ETA: {station.latest_order.eta_note}</span>
             )}
           </div>
         ) : (
@@ -218,12 +218,12 @@ function TankBar({ tank }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <div style={{ fontSize: 11, color: '#94a3b8', width: 110, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 11, color: 'var(--brand-text-dim, #94a3b8)', width: 110, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {tank.name_overridden
-          ? <span style={{ color: '#f87171' }} title={(tank.override_note || 'This name will update/change.') + ' (temporary label)'}>{tank.name}<sup>*</sup></span>
+          ? <span style={{ color: 'var(--brand-danger-text, #f87171)' }} title={(tank.override_note || 'This name will update/change.') + ' (temporary label)'}>{tank.name}<sup>*</sup></span>
           : tank.name}
         {tank.product ? <>{' · '}{tank.product_overridden
-          ? <span style={{ color: '#f87171' }} title={(tank.override_note || 'This name will update/change.') + ' (temporary label)'}>{tank.product}<sup>*</sup></span>
+          ? <span style={{ color: 'var(--brand-danger-text, #f87171)' }} title={(tank.override_note || 'This name will update/change.') + ' (temporary label)'}>{tank.product}<sup>*</sup></span>
           : tank.product}</> : ''}
       </div>
       {/* Fill bar */}
@@ -238,9 +238,9 @@ function TankBar({ tank }) {
         {pctDisp}
       </div>
       <div style={{ fontSize: 11, width: 170, flexShrink: 0, textAlign: 'right', lineHeight: 1.25 }}>
-        <span style={{ color: '#64748b' }}>{volDisp}</span>
+        <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{volDisp}</span>
         {ullageDisp && (
-          <span style={{ color: '#94a3b8' }} title="Ullage — gallons of room left before full">{' · '}{ullageDisp}</span>
+          <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }} title="Ullage — gallons of room left before full">{' · '}{ullageDisp}</span>
         )}
       </div>
     </div>
@@ -277,15 +277,15 @@ function OrderModal({ station, onClose, onDone }) {
       }}
     >
       <div style={{
-        background: '#161b27', border: '1px solid #2d3348', borderRadius: 16,
+        background: 'var(--brand-surface-2, #161b27)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 16,
         padding: 28, width: '100%', maxWidth: 440,
       }}>
         <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>Mark Fuel Ordered</div>
-        <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 20 }}>
           {station.name} — this station will move to the bottom of your list for 6 hours.
         </div>
 
-        <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+        <label style={{ display: 'block', fontSize: 12, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 6 }}>
           Delivery ETA (optional)
         </label>
         <input
@@ -297,12 +297,12 @@ function OrderModal({ station, onClose, onDone }) {
           onKeyDown={e => e.key === 'Enter' && submit()}
           style={{
             width: '100%', boxSizing: 'border-box',
-            background: '#0f1117', border: '1px solid #2d3348', borderRadius: 8,
-            padding: '10px 12px', color: '#e2e8f0', fontSize: 13, marginBottom: 16, outline: 'none',
+            background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
+            padding: '10px 12px', color: 'var(--brand-text, #e2e8f0)', fontSize: 13, marginBottom: 16, outline: 'none',
           }}
         />
 
-        {error && <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+        {error && <div style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={ghostBtn}>Cancel</button>
@@ -325,15 +325,15 @@ function OrderModal({ station, onClose, onDone }) {
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const ghostBtn = {
-  background: 'transparent', border: '1px solid #2d3348', borderRadius: 8,
-  padding: '6px 14px', color: '#94a3b8', fontSize: 12, cursor: 'pointer', minHeight: 36,
+  background: 'transparent', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
+  padding: '6px 14px', color: 'var(--brand-text-dim, #94a3b8)', fontSize: 12, cursor: 'pointer', minHeight: 36,
 }
 
 function ErrorBox({ message }) {
   return (
     <div style={{
-      background: '#450a0a', border: '1px solid #ef4444', borderRadius: 10,
-      padding: '12px 16px', color: '#fca5a5', fontSize: 13, marginBottom: 16,
+      background: 'var(--brand-danger-bg, #450a0a)', border: '1px solid #ef4444', borderRadius: 10,
+      padding: '12px 16px', color: 'var(--brand-danger-text, #fca5a5)', fontSize: 13, marginBottom: 16,
     }}>{message}</div>
   )
 }
