@@ -11,7 +11,7 @@ class TankReading:
     volume_gallons: float
     ullage_gallons: float
     height_inches: float
-    water_inches: float
+    water_inches: Optional[float]  # None when the gauge prints WATER blank
     temperature_f: float
 
 

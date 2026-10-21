@@ -190,13 +190,18 @@ class TLSNetworkDriver:
 
 # ── Display-format parser ─────────────────────────────────────────────────────
 
+def _num(token: str) -> float:
+    return float(token.replace(",", ""))
+
+
 def _parse_inventory_display(text: str, polled_at: datetime) -> list[TankReading]:
     """
     Parse inventory table from a \\x01200 response.
 
     Data rows are identified by 1-4 leading spaces + 1-2 digit tank number.
-    The last 5 whitespace-delimited tokens on each row are:
+    The trailing whitespace-delimited tokens on each row are:
         GALLONS  INCHES  WATER  DEG_F  ULLAGE
+    WATER may be blank (no water float), leaving four numbers instead of five.
 
     Station header lines (command echo, address, timestamp, column headers)
     have no leading spaces or start with letters, so they are naturally skipped.
@@ -211,11 +216,21 @@ def _parse_inventory_display(text: str, polled_at: datetime) -> list[TankReading
             continue
         try:
             tank_id = int(tokens[0])
-            volume  = float(tokens[-5].replace(",", ""))
-            height  = float(tokens[-4].replace(",", ""))
-            water   = float(tokens[-3].replace(",", ""))
-            temp    = float(tokens[-2].replace(",", ""))
-            ullage  = float(tokens[-1].replace(",", ""))
+            ullage  = _num(tokens[-1])
+            temp    = _num(tokens[-2])
+            # WATER prints blank on tanks with no water float (common on E85),
+            # which drops a column. Counting 5 tokens from the right would then
+            # grab a number out of the product name ("Ethanol 85" -> 85 gal).
+            # INCHES always prints with a decimal and GALLONS never does, so the
+            # token 4th from the right tells us whether WATER is present.
+            if "." in tokens[-4]:
+                water  = _num(tokens[-3])
+                height = _num(tokens[-4])
+                volume = _num(tokens[-5])
+            else:
+                water  = None
+                height = _num(tokens[-3])
+                volume = _num(tokens[-4])
         except (ValueError, IndexError) as exc:
             logger.debug("Skipping unparseable row %r: %s", line, exc)
             continue
