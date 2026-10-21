@@ -65,11 +65,26 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "${DB_PORT:-5432}:5432"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tls -d tls_decoded"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # One-shot settle delay. pg_isready goes green a moment before Postgres is
+  # truly comfortable on low-end hardware, so after the db reports healthy
+  # this waits DB_SETTLE_SECONDS (default 15) and exits 0. api/poller/sync
+  # all wait for it to finish before starting. Shows as "Exited (0)" in
+  # `docker ps -a` afterward; that is normal and expected.
+  db-settle:
+    image: postgres:16-alpine
+    profiles: ["station-core", "station-ui"]
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "echo 'db healthy, settling for ${DB_SETTLE_SECONDS:-15}s'; sleep ${DB_SETTLE_SECONDS:-15}; echo done"]
+    restart: "no"
 
   api:
     build: ./api
@@ -77,6 +92,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-settle:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://tls:${DB_PASSWORD:-tls_local}@db:5432/tls_decoded
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-prod}
@@ -104,6 +121,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-settle:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     environment:
@@ -149,8 +168,15 @@ services:
   sync:
     build: ./sync
     profiles: ["station-core", "station-ui"]
+    # Waits on api (not just db) so the api has created the tables before
+    # sync tries to ALTER them; avoids the "relation tanks does not exist"
+    # crash-loop on first boot.
     depends_on:
       db:
+        condition: service_healthy
+      db-settle:
+        condition: service_completed_successfully
+      api:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://tls:${DB_PASSWORD:-tls_local}@db:5432/tls_decoded
@@ -176,6 +202,7 @@ services:
       - cloud_pgdata:/var/lib/postgresql/data
     ports:
       - "${CLOUD_DB_PORT:-5433}:5432"   # distinct host port from the station db's 5432, so both can run on one box
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tls_cloud -d tls_decoded_cloud"]
       interval: 10s
