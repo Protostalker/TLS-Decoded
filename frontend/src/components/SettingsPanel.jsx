@@ -31,18 +31,25 @@ const btn = (primary) => ({
 })
 
 function TankEditor({ tank, onSaved }) {
+  const [name, setName] = useState(tank.name ?? '')
+  const [product, setProduct] = useState(tank.product ?? '')
   const [capacity, setCapacity] = useState(tank.capacity_gallons ?? '')
   const [reorder, setReorder] = useState(tank.reorder_threshold_gallons ?? '')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
-  const dirty = Number(capacity) !== tank.capacity_gallons
+  const dirty = name.trim() !== (tank.name ?? '')
+    || product.trim() !== (tank.product ?? '')
+    || Number(capacity) !== tank.capacity_gallons
     || Number(reorder) !== tank.reorder_threshold_gallons
 
   const save = async () => {
+    if (!name.trim()) { setMsg('Name cannot be blank'); return }
     setSaving(true); setMsg(null)
     try {
       const updated = await api.updateTank(tank.id, {
+        name: name.trim(),
+        product: product.trim() || undefined,
         capacity_gallons: Number(capacity),
         reorder_threshold_gallons: Number(reorder),
       })
@@ -60,7 +67,23 @@ function TankEditor({ tank, onSaved }) {
       background: 'var(--brand-well, #111827)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
       padding: '10px 12px', marginBottom: 8,
     }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text, #cbd5e1)', marginBottom: 6 }}>{tank.name}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text, #cbd5e1)', marginBottom: 6 }}>
+        Tank {tank.id} <span style={{ fontWeight: 400, color: 'var(--brand-text-dimmer, #64748b)' }}>(console tank number)</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ flex: 2, minWidth: 140 }}>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Display name</div>
+          <input type="text" maxLength={40} value={name} onChange={e => setName(e.target.value)}
+            placeholder="e.g. 87 Unleaded"
+            style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 110 }}>
+          <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Product</div>
+          <input type="text" maxLength={40} value={product} onChange={e => setProduct(e.target.value)}
+            placeholder="e.g. E85"
+            style={{ ...inputStyle, padding: '6px 8px', fontSize: 12 }} />
+        </div>
+      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 90 }}>
           <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>Capacity (gal)</div>
