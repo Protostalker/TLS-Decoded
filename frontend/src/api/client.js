@@ -76,6 +76,14 @@ export const api = {
 
   deletePrice: (priceId) => request(`/prices/${priceId}`, { method: 'DELETE' }),
 
+  bulkPricesMonth: () => request('/prices/bulk'),
+
+  saveBulkPrices: (entries) => request('/prices/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+  }),
+
   updateTank: (tankId, patch) => request(`/tanks/${tankId}`, {
     method: 'PUT',
     body: JSON.stringify(patch),

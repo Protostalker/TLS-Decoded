@@ -13,6 +13,7 @@ import AllPricingPanel from './AllPricingPanel.jsx'
 import TotalStatsPanel from './TotalStatsPanel.jsx'
 import ExportPanel from './ExportPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
+import BulkPricingPage from './BulkPricingPage.jsx'
 import Footer from './Footer.jsx'
 import BrandLogo from './BrandLogo.jsx'
 import { applyBrandTheme } from '../brandPresets.js'
@@ -26,7 +27,8 @@ export default function Dashboard() {
   const [error, setError]             = useState(null)
   const [loading, setLoading]         = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [brand, setBrand]             = useState(null)
+  const [showBulk, setShowBulk]       = useState(false)
+  const [brand, setBrand]            = useState(null)
   const timer                         = useRef(null)
   const isMobile                      = useIsMobile()
 
@@ -128,6 +130,16 @@ export default function Dashboard() {
             <span style={{ fontSize:11, color:'var(--brand-text-faint, #475569)' }}>{error ? 'Error' : 'Live'}</span>
           </div>
           <button
+            onClick={() => setShowBulk(v => !v)}
+            title="Bulk pricing — catch up on a month of prices"
+            style={{
+              background: showBulk ? 'var(--brand-primary, #3b82f6)' : 'var(--brand-surface, #1e2130)',
+              border:'1px solid var(--brand-border, #2d3348)', borderRadius:8,
+              height:32, padding:'0 12px', cursor:'pointer', fontSize:12, fontWeight:600,
+              color: showBulk ? '#fff' : 'var(--brand-text-dim, #94a3b8)',
+            }}
+          >$ Bulk pricing</button>
+          <button
             onClick={() => setSettingsOpen(true)}
             title="Settings"
             style={{
@@ -175,7 +187,9 @@ export default function Dashboard() {
           </div>
         )}
 
-        {data && (
+        {showBulk && <BulkPricingPage onClose={() => setShowBulk(false)} />}
+
+        {data && !showBulk && (
           <>
             {isMobile ? (
               <>
