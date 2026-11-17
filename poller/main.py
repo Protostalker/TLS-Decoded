@@ -167,6 +167,12 @@ def seed_settings(engine: sqlalchemy.Engine, cfg: AppConfig) -> None:
         "commander_last_check_at": "",
         "commander_last_connected": "",
         "commander_last_error": "",
+        # Circuit breaker — see commander_prices.py's module docstring and
+        # SettingsOut.commander_consecutive_failures. Prevents a stale
+        # commander-reader credential from silently burning through the
+        # Commander unit's login-attempt lockout threshold.
+        "commander_consecutive_failures": "0",
+        "commander_failure_threshold": os.environ.get("COMMANDER_FAILURE_THRESHOLD", "5"),
         # Same seed-once-then-UI-wins pattern: DEFAULT_TAX_RATE_PERCENT env
         # var only sets the initial value; Settings -> Tax rate is
         # authoritative afterward, live, for both manual and Commander-synced
@@ -200,6 +206,30 @@ def clear_poll_now(engine: sqlalchemy.Engine) -> None:
         conn.execute(
             text("UPDATE settings SET value = '' WHERE key = 'poll_now_requested_at'")
         )
+
+
+def save_detected_address(engine: sqlalchemy.Engine, name: str, address: str) -> None:
+    """
+    Upsert the site name/address the driver parsed out of the gauge's own
+    response (see network_driver.py's _parse_station_header). Read back by
+    sync/main.py's get_detected_address_settings() and pushed to the cloud
+    as part of station_info, same mechanism as branding. Only called when a
+    poll actually produced a parsed header, and only writes when something
+    changed, so this isn't a per-poll DB write in the common case.
+    """
+    current = get_settings(engine)
+    if current.get("detected_station_name") == name and current.get("detected_station_address") == address:
+        return
+    with engine.begin() as conn:
+        for k, v in (("detected_station_name", name), ("detected_station_address", address)):
+            conn.execute(
+                text(
+                    "INSERT INTO settings (key, value) VALUES (:k, :v) "
+                    "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+                ),
+                {"k": k, "v": v},
+            )
+    logger.info("Detected station address updated from gauge: %r / %r", name, address)
 
 
 def current_aligned_slot(now: datetime, interval_minutes: int) -> datetime:
@@ -541,6 +571,15 @@ class Poller:
             readings = self._driver.poll_inventory(polled_at)
             if not readings:
                 raise RuntimeError("No readings returned by driver")
+
+            # ── Site address, if this driver detected one (network driver
+            #    only — see network_driver.py) ──
+            detected = getattr(self._driver, "last_station_address", None)
+            if detected:
+                try:
+                    save_detected_address(self._engine, detected["name"], detected["address"])
+                except Exception:
+                    logger.exception("Failed to save detected station address — will retry next poll")
 
             # ── Delivery detection ──
             prev_readings = get_last_readings(self._engine)

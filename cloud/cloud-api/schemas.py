@@ -71,12 +71,21 @@ class IngestPollLog(BaseModel):
 class IngestStationInfo(BaseModel):
     """Mirrored FROM the station, not editable from the cloud side — see
     cloud/README.md's Branding section. All optional; sync only sends what
-    it has."""
+    it has.
+
+    detected_station_name/detected_station_address come from the Veeder-Root
+    gauge's own response text (see poller/network_driver.py's
+    _parse_station_header) — NOT every station's console has an address
+    configured into it, so these are frequently both None. Unlike branding,
+    these never overwrite anything an admin has already set on the Station
+    row (manually or from an earlier detection) — see routers/ingest.py."""
     brand_preset: Optional[str] = None
     brand_primary_color: Optional[str] = None
     brand_secondary_color: Optional[str] = None
     brand_accent_color: Optional[str] = None
     brand_logo_data_url: Optional[str] = None
+    detected_station_name: Optional[str] = None
+    detected_station_address: Optional[str] = None
 
 
 class IngestBatch(BaseModel):
@@ -137,6 +146,9 @@ class StationOut(BaseModel):
     active: bool
     zip_code: Optional[str] = None
     timezone: Optional[str] = None
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     brand_preset: Optional[str] = None
     brand_primary_color: Optional[str] = None
     brand_secondary_color: Optional[str] = None
@@ -152,6 +164,9 @@ class StationCreate(BaseModel):
     sync_interval_minutes: int = 30
     zip_code: Optional[str] = None
     timezone: Optional[str] = None
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class StationUpdate(BaseModel):
@@ -160,6 +175,24 @@ class StationUpdate(BaseModel):
     active: Optional[bool] = None
     zip_code: Optional[str] = None
     timezone: Optional[str] = None
+    address: Optional[str] = None
+    # Explicit nullable-clear semantics: a client must send lat/lng as a
+    # number to set the pin, or omit both fields to leave it unchanged.
+    # There's no clean way to "clear the pin" distinct from "unchanged" in
+    # this simple request shape — dropping a pin always re-geocodes/re-sets
+    # both together in practice, so this hasn't needed one yet.
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class GeocodeRequest(BaseModel):
+    address: str
+
+
+class GeocodeResponse(BaseModel):
+    lat: float
+    lng: float
+    display_name: str
 
 
 class StationCredentialOut(BaseModel):
@@ -221,8 +254,17 @@ class SetPasswordRequest(BaseModel):
 
 
 class FuelOrderRequest(BaseModel):
-    """Supplier marks fuel as ordered for a station; ETA is free-text, optional."""
+    """
+    Supplier marks fuel as ordered for a station; ETA note is free-text,
+    optional, unchanged from before. origin_address is new and also
+    optional — when given, the cloud geocodes it and estimates a driving
+    distance/duration to the station (free OSM/OSRM stack, best-effort),
+    which is what powers the non-GPS delivery timer on the map and supplier
+    dashboard. Leaving it blank behaves exactly like before: no timer, just
+    the free-text ETA note.
+    """
     eta_note: Optional[str] = None
+    origin_address: Optional[str] = None
 
 
 class PushSubscribeRequest(BaseModel):

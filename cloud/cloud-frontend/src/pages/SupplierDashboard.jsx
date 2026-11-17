@@ -184,10 +184,16 @@ function StationCard({ station, tick, onOrder, isMobile }) {
           <div style={{
             background: '#1e3a5f', border: '1px solid #2563eb44', borderRadius: 8,
             padding: '6px 14px', fontSize: 12, color: 'var(--brand-link, #93c5fd)', fontWeight: 600,
+            display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220,
           }}>
-            ✓ Ordered · back in {remaining}
-            {station.latest_order?.eta_note && (
-              <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontWeight: 400 }}> · ETA: {station.latest_order.eta_note}</span>
+            <div>
+              ✓ Ordered · back in {remaining}
+              {station.latest_order?.eta_note && (
+                <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontWeight: 400 }}> · ETA: {station.latest_order.eta_note}</span>
+              )}
+            </div>
+            {station.latest_order?.delivery && (
+              <DeliveryTimer delivery={station.latest_order.delivery} />
             )}
           </div>
         ) : (
@@ -199,6 +205,30 @@ function StationCard({ station, tick, onOrder, isMobile }) {
             Mark Fuel Ordered
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Delivery timer — no GPS, just elapsed-vs-estimate (see cloud-api's
+//    delivery.py) ─────────────────────────────────────────────────────────────
+function DeliveryTimer({ delivery }) {
+  const pct = Math.round(Math.min(delivery.progress_pct, 1) * 100)
+  const color = delivery.running_late ? '#f59e0b' : '#60a5fa'
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>
+        <span>{delivery.origin_label ? `From ${delivery.origin_label}` : 'In transit'}</span>
+        <span style={{ color, fontWeight: 700 }}>
+          {delivery.running_late ? 'running late' : `~${pct}% of the way there`}
+        </span>
+      </div>
+      <div style={{ background: '#0f1117', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.3s ease' }} />
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)', marginTop: 3 }}>
+        Estimated {Math.round(delivery.eta_minutes)} min drive
+        {delivery.route_distance_km && ` · ${Math.round(delivery.route_distance_km)} km`}
       </div>
     </div>
   )
@@ -250,13 +280,26 @@ function TankBar({ tank }) {
 // ── Order modal ───────────────────────────────────────────────────────────────
 function OrderModal({ station, onClose, onDone }) {
   const [eta, setEta] = useState('')
+  const [origin, setOrigin] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [suggestion, setSuggestion] = useState(null)
 
   const submit = async () => {
     setSaving(true); setError(null)
     try {
-      await api.supplier.markOrdered(station.id, { eta_note: eta.trim() || null })
+      const result = await api.supplier.markOrdered(station.id, {
+        eta_note: eta.trim() || null,
+        origin_address: origin.trim() || null,
+      })
+      if (result?.route_suggestion) {
+        // Show the heads-up for a beat before closing, rather than silently
+        // discarding it — it's the only moment this supplier sees it.
+        setSuggestion(result.route_suggestion.message)
+        setTimeout(onDone, 2200)
+        setSaving(false)
+        return
+      }
       onDone()
     } catch (e) {
       setError(e.message)
@@ -302,7 +345,30 @@ function OrderModal({ station, onClose, onDone }) {
           }}
         />
 
+        <label style={{ display: 'block', fontSize: 12, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 6 }}>
+          Pickup location (optional — adds a live progress timer, no GPS needed)
+        </label>
+        <input
+          type="text"
+          placeholder="e.g. Depot address the tanker is leaving from"
+          value={origin}
+          onChange={e => setOrigin(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8,
+            padding: '10px 12px', color: 'var(--brand-text, #e2e8f0)', fontSize: 13, marginBottom: 16, outline: 'none',
+          }}
+        />
+        {!station.lat && (
+          <div style={{ fontSize: 11, color: 'var(--brand-text-faint, #475569)', marginTop: -10, marginBottom: 16 }}>
+            This station has no map pin set yet, so a pickup location here won't produce a timer — ask an admin
+            to set one from the Admin page.
+          </div>
+        )}
+
         {error && <div style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+        {suggestion && <div style={{ color: '#fde68a', fontSize: 12, marginBottom: 12 }}>💡 {suggestion}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={ghostBtn}>Cancel</button>

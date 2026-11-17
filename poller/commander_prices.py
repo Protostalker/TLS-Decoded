@@ -156,6 +156,65 @@ def _record_status(engine: sqlalchemy.Engine, connected: bool, error: Optional[s
             )
 
 
+def _setting_int(settings: dict, key: str, default: int) -> int:
+    raw = settings.get(key)
+    try:
+        return int(raw) if raw not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _note_success(engine: sqlalchemy.Engine, settings: dict) -> None:
+    """Circuit breaker — resets the consecutive-failure counter on any
+    successful check. No-op (cheap single UPDATE) if it was already 0."""
+    if _setting_int(settings, "commander_consecutive_failures", 0) == 0:
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO settings (key, value) VALUES ('commander_consecutive_failures', '0') "
+                 "ON CONFLICT (key) DO UPDATE SET value = '0'"),
+        )
+
+
+def _note_failure(engine: sqlalchemy.Engine, settings: dict, error: str) -> None:
+    """
+    Circuit breaker — see module docstring's section on commander-reader's
+    login lockout. Each failed heartbeat/sync check increments a counter;
+    once it reaches commander_failure_threshold (default 5), sync is turned
+    off automatically rather than continuing to retry forever and risking
+    exhausting the Commander unit's remaining login attempts. The operator
+    re-enables it from Settings -> Commander price sync once the underlying
+    credential (held by commander-reader, not by this app) is fixed —
+    re-enabling resets this counter.
+    """
+    threshold = _setting_int(settings, "commander_failure_threshold", 5)
+    count = _setting_int(settings, "commander_consecutive_failures", 0) + 1
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO settings (key, value) VALUES ('commander_consecutive_failures', :v) "
+                 "ON CONFLICT (key) DO UPDATE SET value = :v"),
+            {"v": str(count)},
+        )
+        if count >= threshold:
+            conn.execute(
+                text("INSERT INTO settings (key, value) VALUES ('commander_sync_enabled', 'false') "
+                     "ON CONFLICT (key) DO UPDATE SET value = 'false'"),
+            )
+
+    if count >= threshold:
+        logger.warning(
+            "Commander price sync auto-disabled after %d consecutive failed checks "
+            "(threshold %d) — last error: %s. This is usually a stale credential on "
+            "the commander-reader side (e.g. after the Commander unit's required "
+            "password rotation) rather than a problem here. Fix the credential in "
+            "commander-reader, then re-enable in Settings -> Commander price sync.",
+            count, threshold, error,
+        )
+    else:
+        logger.debug("Commander check failed (%d/%d consecutive): %s", count, threshold, error)
+
+
 def _configured(settings: dict) -> Optional[str]:
     """Returns the configured base_url if commander sync is enabled and has
     a URL set, else None — the shared "is there anything to do" gate used by
@@ -182,14 +241,17 @@ def check_commander_heartbeat(engine: sqlalchemy.Engine, settings: Optional[dict
             health = client.get(f"{base_url}/health")
             health.raise_for_status()
             connected = health.json().get("connected") is not False
-        _record_status(
-            engine, connected=connected,
-            error=None if connected else "Commander unit unreachable (commander-reader is up, but connected=false)",
-        )
+        error = None if connected else "Commander unit unreachable (commander-reader is up, but connected=false)"
+        _record_status(engine, connected=connected, error=error)
+        if connected:
+            _note_success(engine, settings)
+        else:
+            _note_failure(engine, settings, error)
     except Exception as exc:
         logger.debug("Commander heartbeat check failed (%s)", exc)
         try:
             _record_status(engine, connected=False, error=str(exc))
+            _note_failure(engine, settings, str(exc))
         except Exception:
             pass
 
@@ -222,8 +284,10 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
             health = client.get(f"{base_url}/health")
             health.raise_for_status()
             if health.json().get("connected") is False:
+                error = "Commander unit unreachable (commander-reader is up, but connected=false)"
                 logger.warning("commander-reader reports Commander unreachable — skipping this cycle")
-                _record_status(engine, connected=False, error="Commander unit unreachable (commander-reader is up, but connected=false)")
+                _record_status(engine, connected=False, error=error)
+                _note_failure(engine, settings, error)
                 return
 
             resp = client.get(f"{base_url}/prices")
@@ -233,10 +297,15 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
         if payload.get("stale"):
             logger.warning("commander-reader price cache is stale — skipping this cycle "
                             "rather than risk overwriting good data with unknown data")
+            # Not counted as a failure for the circuit breaker — commander-reader
+            # itself is reachable and reporting correctly, it's just waiting on
+            # its own next successful poll of the Commander. A genuine credential
+            # lockout shows up as connected=false / an exception instead.
             _record_status(engine, connected=True, error="Price cache is stale — skipped this cycle")
             return
 
         _record_status(engine, connected=True, error=None)
+        _note_success(engine, settings)
 
         if not tanks:
             logger.debug("No tanks have a commander_grade_id configured — nothing to sync")
@@ -302,5 +371,6 @@ def sync_commander_prices(engine: sqlalchemy.Engine, settings: Optional[dict] = 
         logger.warning("Commander price sync failed this cycle (%s) — will retry next cycle", exc)
         try:
             _record_status(engine, connected=False, error=str(exc))
+            _note_failure(engine, settings, str(exc))
         except Exception:
             pass  # don't let status recording itself break the poller loop

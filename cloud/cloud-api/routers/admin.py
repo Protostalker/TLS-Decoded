@@ -16,9 +16,11 @@ from sqlalchemy.orm import Session
 
 from auth import gen_device_id, gen_device_secret, hash_secret, require_admin
 from database import get_db
+from geocoding import geocode_address
 from models import Customer, Station, User, UserSession, UserStationAssignment
 from schemas import (
-    AssignmentCreate, CustomerCreate, CustomerOut, SessionOut, SetPasswordRequest,
+    AssignmentCreate, CustomerCreate, CustomerOut, GeocodeRequest, GeocodeResponse,
+    SessionOut, SetPasswordRequest,
     StationCreate, StationCredentialOut, StationOut, StationUpdate,
     UserCreate, UserOut, UserUpdate,
 )
@@ -63,6 +65,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
         id=s.id, name=s.name, customer_id=s.customer_id, customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
         zip_code=s.zip_code, timezone=s.timezone,
+        address=s.address, lat=s.lat, lng=s.lng,
         brand_preset=s.brand_preset, brand_primary_color=s.brand_primary_color,
         brand_secondary_color=s.brand_secondary_color, brand_accent_color=s.brand_accent_color,
         brand_logo_data_url=s.brand_logo_data_url,
@@ -91,6 +94,8 @@ def create_station(body: StationCreate, db: Session = Depends(get_db)):
         sync_interval_minutes=body.sync_interval_minutes,
         zip_code=(body.zip_code.strip() if body.zip_code else None),
         timezone=(body.timezone.strip() if body.timezone else None),
+        address=(body.address.strip() if body.address else None),
+        lat=body.lat, lng=body.lng,
         active=True, created_at=datetime.now(tz=timezone.utc),
     )
     db.add(s)
@@ -125,9 +130,32 @@ def update_station(station_id: int, body: StationUpdate, db: Session = Depends(g
             except Exception:
                 raise HTTPException(status_code=400, detail=f"'{candidate}' is not a recognized IANA timezone (e.g. America/Los_Angeles)")
         s.timezone = candidate or None
+    if body.address is not None:
+        s.address = body.address.strip() or None
+    if body.lat is not None:
+        s.lat = body.lat
+    if body.lng is not None:
+        s.lng = body.lng
     db.commit()
     db.refresh(s)
     return _station_out(db, s)
+
+
+@router.post("/admin/geocode", response_model=GeocodeResponse)
+def geocode(body: GeocodeRequest):
+    """
+    Address -> lat/lng for the map-pin field in the station form (see
+    geocoding.py). Doesn't touch any station — the frontend calls this,
+    shows the result for the admin to confirm/adjust, then saves lat/lng via
+    the normal PUT /admin/stations/{id}.
+    """
+    result = geocode_address(body.address)
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="Couldn't find that address. Try a more complete one, or set the pin by hand.",
+        )
+    return GeocodeResponse(**result)
 
 
 @router.post("/admin/stations/{station_id}/request-update-check", response_model=StationOut)

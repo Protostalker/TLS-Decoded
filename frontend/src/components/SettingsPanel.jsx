@@ -137,6 +137,8 @@ export default function SettingsPanel({ open, onClose }) {
   const [commanderUrl, setCommanderUrl] = useState('')
   const [commanderTier, setCommanderTier] = useState('cash')
   const [commanderInterval, setCommanderInterval] = useState(60)
+  // Circuit breaker threshold — see SettingsOut.commander_consecutive_failures.
+  const [commanderFailureThreshold, setCommanderFailureThreshold] = useState(5)
   const [testingCommander, setTestingCommander] = useState(false)
   const [commanderTestResult, setCommanderTestResult] = useState(null)
   // { [tankId]: gradeId as string, '' means unassigned } — local, dirty-tracked
@@ -190,6 +192,7 @@ export default function SettingsPanel({ open, onClose }) {
       setCommanderUrl(s.commander_reader_url)
       setCommanderTier(s.commander_price_tier)
       setCommanderInterval(s.commander_sync_interval_minutes)
+      setCommanderFailureThreshold(s.commander_failure_threshold ?? 5)
       setUpdateCheckEnabled(s.update_check_enabled)
       setUpdateCheckIntervalDays(s.update_check_interval_days)
       setTaxRate(s.default_tax_rate_percent ?? '')
@@ -286,7 +289,19 @@ export default function SettingsPanel({ open, onClose }) {
     commander_reader_url: commanderUrl,
     commander_price_tier: commanderTier,
     commander_sync_interval_minutes: commanderInterval,
+    commander_failure_threshold: commanderFailureThreshold,
   }, 'Commander price sync settings saved — the poller picks this up within ~15s, no restart needed.')
+
+  // Re-enable after an auto-disable (the checkbox toggling back on) resets
+  // the failure counter server-side — see update_settings() in settings.py.
+  const reconnectCommander = async () => {
+    setCommanderEnabled(true)
+    await save(
+      { commander_sync_enabled: true },
+      'Re-enabled — failure counter reset. Make sure the password in commander-reader matches '
+      + "the Commander unit's current one before this runs again.",
+    )
+  }
 
   const handleTestCommander = async () => {
     setTestingCommander(true); setCommanderTestResult(null); setStatus(null)
@@ -641,6 +656,31 @@ export default function SettingsPanel({ open, onClose }) {
                 which Commander grade belongs to which tank below, once connected.
               </div>
 
+              {settings.commander_auto_disabled && (
+                <div style={{
+                  marginTop: 10, background: '#450a0a', border: '1px solid #ef4444',
+                  borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#fca5a5',
+                }}>
+                  <strong>Auto-disabled</strong> after {settings.commander_consecutive_failures} consecutive
+                  failed checks (threshold {settings.commander_failure_threshold}). This almost always means
+                  commander-reader's stored password for the Commander unit is stale (e.g. after that unit's
+                  required periodic password change) — left running, it would keep burning through the
+                  Commander's remaining login attempts until it locked itself out. That credential lives in
+                  commander-reader's own config, not here, so update it there first (and if the Commander unit
+                  is already locked out, that's a Verifone-side unlock, not something this app can do).
+                  Once fixed, re-enable below — the counter resets automatically.
+                  <div>
+                    <button
+                      disabled={saving}
+                      style={{ ...btn(false), marginTop: 8, borderColor: '#ef4444', color: '#fca5a5' }}
+                      onClick={reconnectCommander}
+                    >
+                      Re-enable now
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>commander-reader URL</div>
                 <input
@@ -670,6 +710,22 @@ export default function SettingsPanel({ open, onClose }) {
                 </div>
               </div>
               <div style={hint}>Default 60 — how often the sale price is refreshed. Independent of the TLS poll interval above.</div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: 'var(--brand-text-dimmer, #64748b)', marginBottom: 3 }}>
+                  Auto-disable after this many consecutive failures
+                </div>
+                <input
+                  type="number" min={1} max={100}
+                  value={commanderFailureThreshold}
+                  onChange={e => setCommanderFailureThreshold(Number(e.target.value))}
+                  style={inputStyle}
+                />
+                <div style={hint}>
+                  Default 5. Protects the Commander unit's own login-attempt lockout (commonly ~10)
+                  from a stale commander-reader credential — see the note above if this ever trips.
+                </div>
+              </div>
 
               <button
                 disabled={saving}
@@ -786,6 +842,8 @@ export default function SettingsPanel({ open, onClose }) {
                   ? <span style={{ color: 'var(--brand-text-dim, #94a3b8)' }}>
                       Last checked {formatDistanceToNow(parseISO(settings.commander_last_check_at), { addSuffix: true })}
                       {' — '}{settings.commander_last_connected ? 'connected' : (settings.commander_last_error || 'not connected')}
+                      {settings.commander_consecutive_failures > 0 && !settings.commander_auto_disabled &&
+                        ` (${settings.commander_consecutive_failures}/${settings.commander_failure_threshold} consecutive failures)`}
                     </span>
                   : <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>Never checked yet.</span>}
               </div>

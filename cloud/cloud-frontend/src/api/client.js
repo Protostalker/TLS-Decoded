@@ -62,6 +62,7 @@ export const api = {
   stationStatsSummary: (id) => request(`/stations/${id}/stats/summary`),
   stationWeather: (id) => request(`/stations/${id}/weather`),
   stationForecast: (id, range = '24h') => request(`/stations/${id}/forecast?range=${encodeURIComponent(range)}`),
+  stationsMap: () => request('/stations/map'),
   submitPriceUpdate: (id, tankLocalId, body) =>
     request(`/stations/${id}/tanks/${tankLocalId}/price-updates`, { method: 'POST', body: JSON.stringify(body) }),
   priceUpdates: (id) => request(`/stations/${id}/price-updates`),
@@ -84,6 +85,9 @@ export const api = {
   // ── Supplier ──
   supplier: {
     stations: () => request('/supplier/stations'),
+    // body: { eta_note, origin_address } — both optional. origin_address
+    // (new, for the delivery-timer phase) triggers a best-effort geocode +
+    // route estimate server-side; omit it for the old free-text-only flow.
     markOrdered: (stationId, body) =>
       request(`/supplier/stations/${stationId}/order`, { method: 'POST', body: JSON.stringify(body) }),
   },
@@ -123,6 +127,7 @@ export const api = {
     updateStation: (id, body) => request(`/admin/stations/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     rotateCredential: (id) => request(`/admin/stations/${id}/rotate-credential`, { method: 'POST' }),
     requestUpdateCheck: (id) => request(`/admin/stations/${id}/request-update-check`, { method: 'POST' }),
+    geocode: (address) => request('/admin/geocode', { method: 'POST', body: JSON.stringify({ address }) }),
 
     users: () => request('/admin/users'),
     createUser: (body) => request('/admin/users', { method: 'POST', body: JSON.stringify(body) }),

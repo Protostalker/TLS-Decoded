@@ -204,6 +204,18 @@ class SettingsOut(BaseModel):
     commander_last_check_at: Optional[datetime] = None
     commander_last_connected: Optional[bool] = None
     commander_last_error: Optional[str] = None
+    # Circuit breaker: commander-reader's own login to the physical Commander
+    # unit can lock out after a handful of failed attempts (e.g. its stored
+    # password going stale after that unit's periodic required password
+    # change) — without this, the poller would keep hitting it forever,
+    # burning through the Commander's remaining login attempts. Counts
+    # consecutive failed heartbeat/sync checks; resets to 0 on any success
+    # or whenever the sync is manually re-enabled. commander_sync_enabled is
+    # flipped off automatically once this reaches commander_failure_threshold.
+    commander_consecutive_failures: int = 0
+    commander_failure_threshold: int = 5
+    commander_auto_disabled: bool = False
+
     # Applied automatically to new price entries (manual or Commander-synced)
     # when a rate isn't given explicitly — see api/routers/pricing.py.
     default_tax_rate_percent: Optional[float] = None
@@ -249,6 +261,9 @@ class SettingsUpdate(BaseModel):
     commander_reader_url: Optional[str] = None
     commander_price_tier: Optional[str] = None
     commander_sync_interval_minutes: Optional[int] = None
+    # Re-enabling (true) resets commander_consecutive_failures to 0 — see
+    # SettingsOut's comment on the circuit breaker this guards.
+    commander_failure_threshold: Optional[int] = None
     default_tax_rate_percent: Optional[float] = None
     default_additional_fee_per_gallon: Optional[float] = None
     brand_preset: Optional[str] = None

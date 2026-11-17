@@ -100,6 +100,8 @@ def _commander_defaults() -> dict:
         "commander_last_check_at": "",
         "commander_last_connected": "",
         "commander_last_error": "",
+        "commander_consecutive_failures": "0",
+        "commander_failure_threshold": os.environ.get("COMMANDER_FAILURE_THRESHOLD", "5"),
         "default_tax_rate_percent": os.environ.get("DEFAULT_TAX_RATE_PERCENT", ""),
         # Flat $/gal margin adjustment — same seed-once-then-UI-wins pattern,
         # also normally seeded by the poller (DEFAULT_ADDITIONAL_FEE_PER_GALLON).
@@ -205,6 +207,12 @@ def _to_out(v: dict[str, str]) -> SettingsOut:
         commander_last_check_at=commander_check_at,
         commander_last_connected=commander_connected,
         commander_last_error=v.get("commander_last_error") or None,
+        commander_consecutive_failures=int(v.get("commander_consecutive_failures") or 0),
+        commander_failure_threshold=int(v.get("commander_failure_threshold") or 5),
+        commander_auto_disabled=(
+            (v.get("commander_sync_enabled") or "false").lower() != "true"
+            and int(v.get("commander_consecutive_failures") or 0) >= int(v.get("commander_failure_threshold") or 5)
+        ),
         default_tax_rate_percent=(
             float(v["default_tax_rate_percent"])
             if (v.get("default_tax_rate_percent") or "").strip() else None
@@ -292,6 +300,17 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
     #    tick, no restart needed, same as poll_interval_minutes above. ──────
     if update.commander_sync_enabled is not None:
         _set(db, "commander_sync_enabled", "true" if update.commander_sync_enabled else "false")
+        if update.commander_sync_enabled:
+            # Fresh start on manual re-enable — including the common case of
+            # this having been auto-disabled by the failure-count circuit
+            # breaker (e.g. after updating a rotated password in
+            # commander-reader and flipping this back on).
+            _set(db, "commander_consecutive_failures", "0")
+
+    if update.commander_failure_threshold is not None:
+        if update.commander_failure_threshold < 1:
+            raise HTTPException(status_code=400, detail="commander_failure_threshold must be >= 1")
+        _set(db, "commander_failure_threshold", str(update.commander_failure_threshold))
 
     if update.commander_reader_url is not None:
         candidate = update.commander_reader_url.strip().rstrip("/")

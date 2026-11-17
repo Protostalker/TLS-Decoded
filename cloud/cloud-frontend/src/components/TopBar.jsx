@@ -55,6 +55,7 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
           ) : (
             <Link to="/" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Stations</Link>
           )}
+          <Link to="/map" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Map</Link>
           {user.role !== 'supplier' && <NotificationBell />}
           <ThemeSelector />
           <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{user.email}</span>
@@ -100,6 +101,7 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
               ) : (
                 <MenuLink to="/" onClick={() => setMenuOpen(false)}>Stations</MenuLink>
               )}
+              <MenuLink to="/map" onClick={() => setMenuOpen(false)}>Map</MenuLink>
               {user.role === 'admin' && (
                 <MenuLink to="/admin" onClick={() => setMenuOpen(false)}>Admin</MenuLink>
               )}

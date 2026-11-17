@@ -62,6 +62,16 @@ class Station(Base):
     # on it, so it's safe to leave blank.
     zip_code: Mapped[str | None] = mapped_column(Text)
 
+    # Map pin (see routers/admin.py's geocode endpoint / routers/map.py).
+    # address is free-text, shown as entered; lat/lng are what actually
+    # places the pin. Either set directly (drag-the-pin) or derived by
+    # geocoding `address` via Nominatim (OpenStreetMap, free, no API key) —
+    # see geocoding.py. All optional; a station with no pin just doesn't
+    # appear on the map, nothing else depends on this.
+    address: Mapped[str | None] = mapped_column(Text)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lng: Mapped[float | None] = mapped_column(Float)
+
     # IANA tz name (e.g. "America/Los_Angeles") — set by an admin from T3.
     # Calendar-day boundaries ("today consumed", day-by-day margin) are
     # computed in THIS timezone, matching how the station's own local
@@ -318,6 +328,14 @@ class FuelOrder(Base):
     Designed to be the foundation for a real ordering integration in a later
     phase (e.g. linking to a fuel supplier's PO system) — don't add a
     'completed' column yet; that's phase 2.
+
+    origin_* / dispatched_at / eta_minutes / route_distance_km (added in the
+    distance/delivery-timer phase) are ALL optional — a supplier who just
+    types a free-text ETA note, like before, leaves these null and gets no
+    timer badge. They're only populated when the supplier also gives a
+    pickup location, which routing.route() turns into a one-time distance/
+    duration estimate at order time. No GPS, no live tracking — just
+    elapsed-time-vs-estimate math (see routers/supplier.py).
     """
     __tablename__ = "fuel_orders"
 
@@ -327,6 +345,12 @@ class FuelOrder(Base):
     ordered_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     eta_note: Mapped[str | None] = mapped_column(Text)
     snoozed_until: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    origin_label: Mapped[str | None] = mapped_column(Text)
+    origin_lat: Mapped[float | None] = mapped_column(Float)
+    origin_lng: Mapped[float | None] = mapped_column(Float)
+    dispatched_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    eta_minutes: Mapped[float | None] = mapped_column(Float)
+    route_distance_km: Mapped[float | None] = mapped_column(Float)
 
 
 class Notification(Base):

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from auth import verify_device
 from database import get_db
+from geocoding import geocode_address
 from models import PendingPriceUpdate, PendingTankUpdate, Station
 from schemas import IngestBatch, IngestResult
 
@@ -190,6 +191,37 @@ def ingest_batch(
                 "logo": batch.station_info.brand_logo_data_url,
             },
         )
+
+        # Address auto-fill — ONLY when the station has no address at all
+        # yet. A manual entry (or a prior detection) always wins; this never
+        # clobbers it, so an admin who's already pinned a station by hand
+        # never has their pin silently reverted by a stale/different gauge
+        # config. Best-effort: a geocoding hiccup just means no pin this
+        # cycle, never fails the sync.
+        detected_address = batch.station_info.detected_station_address
+        if detected_address and not station.address:
+            geo = None
+            try:
+                geo = geocode_address(detected_address)
+            except Exception:
+                geo = None
+            db.execute(
+                text(
+                    """
+                    UPDATE stations SET
+                        address = :address,
+                        lat = COALESCE(:lat, lat),
+                        lng = COALESCE(:lng, lng)
+                    WHERE id = :sid
+                    """
+                ),
+                {
+                    "sid": station.id,
+                    "address": detected_address,
+                    "lat": geo["lat"] if geo else None,
+                    "lng": geo["lng"] if geo else None,
+                },
+            )
 
     now = datetime.now(tz=timezone.utc)
     db.execute(text("UPDATE stations SET last_sync_at = :now WHERE id = :sid"), {"now": now, "sid": station.id})

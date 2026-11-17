@@ -107,9 +107,10 @@ function CustomersTab() {
 function StationsTab() {
   const [stations, setStations] = useState(null)
   const [customers, setCustomers] = useState(null)
-  const [form, setForm] = useState({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '', timezone: '' })
+  const [form, setForm] = useState({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '', timezone: '', address: '' })
   const [error, setError] = useState(null)
   const [newCredential, setNewCredential] = useState(null)
+  const [geocoding, setGeocoding] = useState(false)
 
   const load = () => {
     api.admin.stations().then(setStations).catch(e => setError(e.message))
@@ -120,15 +121,28 @@ function StationsTab() {
   const create = async (e) => {
     e.preventDefault()
     setError(null)
+    // Address is required up front (Veeder-Root needs one), but geocoding
+    // it is still best-effort — if Nominatim can't place it, the station
+    // is still created with the typed address and no pin; an admin can hit
+    // "Locate" again from the table row below, or set lat/lng by hand.
+    let lat, lng
+    setGeocoding(true)
+    try {
+      const geo = await api.admin.geocode(form.address.trim())
+      lat = geo.lat; lng = geo.lng
+    } catch { /* best-effort — see comment above */ }
+    finally { setGeocoding(false) }
     try {
       const cred = await api.admin.createStation({
         customer_id: Number(form.customer_id), name: form.name,
         sync_interval_minutes: Number(form.sync_interval_minutes) || 30,
         zip_code: form.zip_code || null,
         timezone: form.timezone || null,
+        address: form.address.trim(),
+        lat, lng,
       })
       setNewCredential(cred)
-      setForm({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '', timezone: '' })
+      setForm({ customer_id: '', name: '', sync_interval_minutes: 30, zip_code: '', timezone: '', address: '' })
       load()
     } catch (e) { setError(e.message) }
   }
@@ -162,6 +176,14 @@ function StationsTab() {
     load()
   }
 
+  const savePin = async (station, { address, lat, lng }) => {
+    setError(null)
+    try {
+      await api.admin.updateStation(station.id, { address, lat, lng })
+      load()
+    } catch (e) { setError(e.message) }
+  }
+
   const [checkRequested, setCheckRequested] = useState({})
   const requestUpdateCheck = async (id) => {
     setError(null)
@@ -184,6 +206,10 @@ function StationsTab() {
         <Field label="Station name">
           <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} placeholder="e.g. Gardena #1" />
         </Field>
+        <Field label="Address (required)">
+          <input required value={form.address} onChange={e => setForm({ ...form, address: e.target.value })}
+                 style={{ ...inputStyle, width: 240 }} placeholder="16435 S. Figueroa St, Gardena, CA 90248" />
+        </Field>
         <Field label="Sync interval (min)">
           <input type="number" min="1" value={form.sync_interval_minutes}
                  onChange={e => setForm({ ...form, sync_interval_minutes: e.target.value })} style={{ ...inputStyle, width: 90 }} />
@@ -196,8 +222,14 @@ function StationsTab() {
           <input value={form.timezone} onChange={e => setForm({ ...form, timezone: e.target.value })}
                  style={{ ...inputStyle, width: 170 }} placeholder="America/Los_Angeles" />
         </Field>
-        <button type="submit" style={btn}>Provision station</button>
+        <button type="submit" disabled={geocoding} style={btn}>{geocoding ? 'Locating…' : 'Provision station'}</button>
       </form>
+      <div style={{ fontSize: 11, color: 'var(--brand-text-faint, #475569)', marginTop: -10, marginBottom: 16 }}>
+        Stations provisioned before this field existed, with no address on file yet, will pick one up
+        automatically the first time they sync — only if their Veeder-Root console has a site address
+        configured, and only while the address is still blank. Once an address is set (by hand or detected),
+        syncing never overwrites it.
+      </div>
 
       {error && <ErrorBox message={error} />}
 
@@ -225,7 +257,8 @@ function StationsTab() {
             <thead>
               <tr>
                 <th style={th}>Name</th><th style={th}>Customer</th><th style={th}>Sync interval</th>
-                <th style={th}>Zip</th><th style={th}>Timezone</th><th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
+                <th style={th}>Zip</th><th style={th}>Timezone</th><th style={th}>Map pin</th>
+                <th style={th}>Last sync</th><th style={th}>Status</th><th style={th}></th>
               </tr>
             </thead>
             <tbody>
@@ -236,6 +269,7 @@ function StationsTab() {
                   <td style={td}>{s.sync_interval_minutes} min</td>
                   <td style={td}><ZipEditor station={s} onSave={saveZip} /></td>
                   <td style={td}><TimezoneEditor station={s} onSave={saveTimezone} /></td>
+                  <td style={td}><PinEditor station={s} onSave={savePin} /></td>
                   <td style={td}><StalenessBadge lastSyncAt={s.last_sync_at} label="synced" /></td>
                   <td style={td}>{s.active ? <span style={{ color: '#86efac' }}>active</span> : <span style={{ color: 'var(--brand-danger-text, #fca5a5)' }}>inactive</span>}</td>
                   <td style={{ ...td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -284,6 +318,71 @@ function ZipEditor({ station, onSave }) {
           Save
         </button>
       )}
+    </div>
+  )
+}
+
+function PinEditor({ station, onSave }) {
+  const [address, setAddress] = useState(station.address || '')
+  const [lat, setLat] = useState(station.lat ?? '')
+  const [lng, setLng] = useState(station.lng ?? '')
+  const [locating, setLocating] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [locateError, setLocateError] = useState(null)
+  const dirty = address !== (station.address || '') || String(lat) !== String(station.lat ?? '') || String(lng) !== String(station.lng ?? '')
+  const hasPin = station.lat != null && station.lng != null
+
+  const locate = async () => {
+    if (!address.trim()) return
+    setLocating(true)
+    setLocateError(null)
+    try {
+      const r = await api.admin.geocode(address.trim())
+      setLat(r.lat)
+      setLng(r.lng)
+    } catch (e) {
+      setLocateError('Not found — set lat/lng by hand below, or try a fuller address.')
+    } finally {
+      setLocating(false)
+    }
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await onSave(station, {
+        address: address || null,
+        lat: lat === '' ? undefined : Number(lat),
+        lng: lng === '' ? undefined : Number(lng),
+      })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <input
+          value={address} onChange={e => setAddress(e.target.value)}
+          placeholder="123 Main St, Gardena, CA"
+          style={{ ...inputStyle, flex: 1, padding: '4px 6px', fontSize: 11 }}
+        />
+        <button onClick={locate} disabled={locating || !address.trim()} style={{ ...btnGhost, padding: '3px 8px', fontSize: 10 }}>
+          {locating ? '…' : 'Locate'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input value={lat} onChange={e => setLat(e.target.value)} placeholder="lat"
+               style={{ ...inputStyle, width: 80, padding: '4px 6px', fontSize: 11 }} />
+        <input value={lng} onChange={e => setLng(e.target.value)} placeholder="lng"
+               style={{ ...inputStyle, width: 80, padding: '4px 6px', fontSize: 11 }} />
+        {hasPin && !dirty && <span style={{ fontSize: 10, color: '#86efac' }}>📍 pinned</span>}
+        {dirty && (
+          <button onClick={save} disabled={saving} style={{ ...btnGhost, padding: '3px 8px', fontSize: 10 }}>
+            Save
+          </button>
+        )}
+      </div>
+      {locateError && <div style={{ fontSize: 10, color: 'var(--brand-danger-text, #fca5a5)' }}>{locateError}</div>}
     </div>
   )
 }

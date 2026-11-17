@@ -48,6 +48,59 @@ ETX = b"\x03"
 # e.g. "  1   UNLEADED   4175 ..."
 _DATA_ROW_RE = re.compile(r'^\s{1,4}(\d{1,2})\s')
 
+# Station header appears on every \x01200 response, above the data rows —
+# see the module docstring for a real example:
+#   200                              <- command echo
+#   881283 SM SERVICE ST             <- site/business name
+#   16435 S. FIGUEROA ST             <- street address
+#   GARDENA CA 90248                 <- city/state/zip
+#   310 532-5663                     <- phone
+#   JUL 31, 2026  6:12 PM            <- timestamp
+#   TANK  PRODUCT  ...               <- column header
+# Veeder-Root bakes the site name/address into the console's own
+# configuration, so this is a free, always-current source for the cloud map
+# pin — no manual entry needed once a station's console has it set. We
+# detect it by exclusion: strip the command echo, phone, timestamp and
+# column-header lines; whatever text remains above the first data row is
+# the name + address block.
+_COMMAND_ECHO_RE = re.compile(r'^\d+$')
+_PHONE_LINE_RE = re.compile(r'^\d{3}[\s-]\d{3}-\d{4}$')
+_TIMESTAMP_LINE_RE = re.compile(
+    r'^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s+\d{1,2},?\s+\d{4}',
+    re.IGNORECASE,
+)
+_COLUMN_HEADER_RE = re.compile(r'^\s*TANK\s+PRODUCT', re.IGNORECASE)
+
+
+def _parse_station_header(text: str) -> Optional[dict]:
+    """
+    Pull the site name + mailing address out of a \\x01200 response's header
+    block. Returns {"name": ..., "address": ...}, or None if the header
+    doesn't look like the expected shape — not every TLS-350 has a site
+    address configured into it, and that's fine: the cloud side falls back
+    to whatever an admin enters by hand (see cloud-api's geocode endpoint).
+    """
+    header_lines: list[str] = []
+    for line in text.splitlines():
+        if _DATA_ROW_RE.match(line) or _COLUMN_HEADER_RE.match(line):
+            break
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if (
+            _COMMAND_ECHO_RE.match(stripped)
+            or _PHONE_LINE_RE.match(stripped)
+            or _TIMESTAMP_LINE_RE.match(stripped)
+        ):
+            continue
+        header_lines.append(stripped)
+
+    if len(header_lines) < 2:
+        # Need at least a name + one address line to be worth anything.
+        return None
+
+    return {"name": header_lines[0], "address": ", ".join(header_lines[1:])}
+
 
 class TLSNetworkDriver:
     """TCP client for TLS-350 via serial-to-Ethernet adapter."""
@@ -57,6 +110,11 @@ class TLSNetworkDriver:
         self._port = cfg.port
         self._timeout = cfg.timeout_seconds
         self._sock: Optional[socket.socket] = None
+        # Site name/address detected from the last response that had one —
+        # read by poller/main.py after a successful poll_inventory() call and
+        # synced up to the cloud (see sync/main.py's get_detected_address_settings).
+        # Sticky across polls so one garbled response doesn't blank it out.
+        self.last_station_address: Optional[dict] = None
 
     # ── Connection management ─────────────────────────────────────────────────
 
@@ -175,6 +233,10 @@ class TLSNetworkDriver:
                 "signal ground, or a baud/parity mismatch between the adapter and "
                 "the TLS-350."
             )
+
+        parsed_address = _parse_station_header(raw)
+        if parsed_address:
+            self.last_station_address = parsed_address
 
         readings = _parse_inventory_display(raw, polled_at)
         if not readings:

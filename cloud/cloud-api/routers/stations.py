@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session
 
 from auth import assigned_station_ids, get_current_user, require_admin, require_not_degraded, require_station_access
 from database import get_db
+from delivery import delivery_progress
 from models import (
     CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank,
-    PendingPriceUpdate, PendingTankUpdate, Station, User,
+    FuelOrder, PendingPriceUpdate, PendingTankUpdate, Station, User,
 )
 from schemas import (
     PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut,
@@ -29,8 +30,10 @@ from schemas import (
 )
 from weather import get_station_weather
 from forecast import (
-    FORECAST_RANGES, PROFILE_DAYS, build_hourly_profile, tank_series, window_grid,
+    FORECAST_RANGES, PROFILE_DAYS, build_hourly_profile, holiday_profile_for_dates,
+    tank_series, window_grid,
 )
+from holidays import holidays_in_range, past_occurrences
 
 # Every route here serves station data to T1/T2 — gated by license state, per
 # the dev handoff doc's degraded-mode answer: non-admins lose ALL data
@@ -46,6 +49,7 @@ def _station_out(db: Session, s: Station) -> StationOut:
         customer_name=cust.name if cust else None,
         sync_interval_minutes=s.sync_interval_minutes, last_sync_at=s.last_sync_at, active=s.active,
         zip_code=s.zip_code, timezone=s.timezone,
+        address=s.address, lat=s.lat, lng=s.lng,
         brand_preset=s.brand_preset, brand_primary_color=s.brand_primary_color,
         brand_secondary_color=s.brand_secondary_color, brand_accent_color=s.brand_accent_color,
         brand_logo_data_url=s.brand_logo_data_url,
@@ -59,6 +63,60 @@ def my_stations(user: User = Depends(get_current_user), db: Session = Depends(ge
     ids = assigned_station_ids(db, user)
     stations = db.query(Station).filter(Station.id.in_(ids)).order_by(Station.name).all() if ids else []
     return [_station_out(db, s) for s in stations]
+
+
+# ── Map (T2 + supplier) ──────────────────────────────────────────────────────
+#
+# Pins for whichever stations this user is allowed to see — assigned_station_ids
+# is the SAME access-control helper every other T1/T2/supplier route uses, so
+# a user assigned to 2 of a customer's 5 stations sees exactly those 2 pins,
+# never the other 3, same as the station picker list. Admins see every active
+# station with a pin set, same "sees everything" rule as elsewhere.
+
+@router.get("/stations/map")
+def stations_map(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ids = assigned_station_ids(db, user)
+    stations = (
+        db.query(Station)
+        .filter(Station.id.in_(ids), Station.active == True, Station.lat.isnot(None), Station.lng.isnot(None))  # noqa: E712
+        .all()
+        if ids else []
+    )
+
+    out = []
+    for s in stations:
+        tanks = db.query(CloudTank).filter(CloudTank.station_id == s.id, CloudTank.active == True).all()  # noqa: E712
+        min_pct: Optional[float] = None
+        for tank in tanks:
+            reading = (
+                db.query(CloudReading)
+                .filter(CloudReading.station_id == s.id, CloudReading.tank_local_id == tank.local_id)
+                .order_by(CloudReading.polled_at.desc())
+                .first()
+            )
+            if reading and reading.volume_gallons is not None and tank.capacity_gallons:
+                pct = reading.volume_gallons / tank.capacity_gallons
+                if min_pct is None or pct < min_pct:
+                    min_pct = pct
+        # Active (non-expired snooze) delivery, if any — same notion of
+        # "active" as supplier.py's _active_snooze, duplicated rather than
+        # cross-imported (routers don't import each other in this codebase;
+        # see models.FuelOrder for the fields). None unless the supplier who
+        # marked it ordered also gave a pickup address that geocoded/routed.
+        active_order = (
+            db.query(FuelOrder)
+            .filter(FuelOrder.station_id == s.id, FuelOrder.snoozed_until > datetime.now(tz=timezone.utc))
+            .order_by(FuelOrder.ordered_at.desc())
+            .first()
+        )
+
+        out.append({
+            "id": s.id, "name": s.name, "lat": s.lat, "lng": s.lng, "address": s.address,
+            "last_sync_at": s.last_sync_at,
+            "urgency_pct": round(min_pct, 4) if min_pct is not None else None,
+            "delivery": delivery_progress(active_order),
+        })
+    return out
 
 
 # ── Shared stats calc ────────────────────────────────────────────────────────
@@ -882,6 +940,16 @@ def station_forecast(
     anchor, grid = window_grid(now, range, tz)
     since = min(grid[0], now - timedelta(days=PROFILE_DAYS)) - timedelta(hours=3)
 
+    # Holiday tagging (see holidays.py / forecast.py's module docstring).
+    # Station-level, not per-tank — which calendar dates are holidays
+    # doesn't depend on the tank. Cheap no-op on the (usual) grid that
+    # doesn't cross one.
+    future_dates = {t.astimezone(tz).date() for t in grid if t > now}
+    holiday_tags = (
+        {d: n for d, n in holidays_in_range(min(future_dates), max(future_dates)).items() if d in future_dates}
+        if future_dates else {}
+    )
+
     tanks = (
         db.query(CloudTank)
         .filter(CloudTank.station_id == station_id, CloudTank.active == True)  # noqa: E712
@@ -903,7 +971,37 @@ def station_forecast(
             ).fetchall()
         ]
         profile = build_hourly_profile(rows, tz)
-        series = tank_series(rows, grid, profile, tz, step_h, tank.reorder_threshold_gallons)
+
+        # Only hits the DB again when this request's window actually crosses
+        # a holiday (rare) — and only once per distinct holiday name, not per
+        # grid point. See holidays.py / forecast.py's module docstring for
+        # why this looks for the station's OWN history instead of applying a
+        # generic guess.
+        holiday_rates: dict = {}
+        for name in set(holiday_tags.values()):
+            candidates = past_occurrences(name, before=now.astimezone(tz).date())
+            if not candidates:
+                continue
+            placeholders = ", ".join(f":d{i}" for i in range(len(candidates)))
+            hist = db.execute(
+                text(
+                    f"SELECT polled_at, volume_gallons FROM cloud_readings "
+                    f"WHERE station_id = :sid AND tank_local_id = :tlid "
+                    f"AND volume_gallons IS NOT NULL AND polled_at::date IN ({placeholders}) "
+                    f"ORDER BY polled_at ASC"
+                ),
+                {"sid": station_id, "tlid": tank.local_id,
+                 **{f"d{i}": d for i, d in enumerate(candidates)}},
+            ).fetchall()
+            hist_rows = [(r[0] if r[0].tzinfo else r[0].replace(tzinfo=timezone.utc), float(r[1])) for r in hist]
+            holiday_profile = holiday_profile_for_dates(hist_rows, tz, set(candidates))
+            if holiday_profile:
+                for d, n in holiday_tags.items():
+                    if n == name:
+                        holiday_rates[d] = holiday_profile["rates"]
+
+        series = tank_series(rows, grid, profile, tz, step_h, tank.reorder_threshold_gallons,
+                              holiday_tags=holiday_tags, holiday_rates=holiday_rates)
         tank_outs.append({
             "tank_local_id": tank.local_id,
             "name": tank.name_override or tank.name,

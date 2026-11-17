@@ -104,6 +104,10 @@ services:
       # fee), applied automatically like the tax rate above. Positive
       # reduces margin, negative increases it. See .env.example.
       DEFAULT_ADDITIONAL_FEE_PER_GALLON: ${DEFAULT_ADDITIONAL_FEE_PER_GALLON:-}
+      # Fallback default only (read by /settings if the poller hasn't seeded
+      # it yet) — the poller's own copy below is what the circuit breaker
+      # actually runs on.
+      COMMANDER_FAILURE_THRESHOLD: ${COMMANDER_FAILURE_THRESHOLD:-5}
     volumes:
       - ./config:/app/config:ro
     ports:
@@ -137,6 +141,11 @@ services:
       COMMANDER_PRICE_TIER: ${COMMANDER_PRICE_TIER:-cash}
       COMMANDER_PRICE_SYNC_INTERVAL_MINUTES: ${COMMANDER_PRICE_SYNC_INTERVAL_MINUTES:-60}
       COMMANDER_HEARTBEAT_INTERVAL_MINUTES: ${COMMANDER_HEARTBEAT_INTERVAL_MINUTES:-5}
+      # Circuit breaker — auto-disables Commander sync after this many
+      # consecutive failed checks, so a stale commander-reader credential
+      # can't silently burn through the Commander unit's own login-attempt
+      # lockout. See .env.example / Settings -> Commander price sync.
+      COMMANDER_FAILURE_THRESHOLD: ${COMMANDER_FAILURE_THRESHOLD:-5}
       DEFAULT_TAX_RATE_PERCENT: ${DEFAULT_TAX_RATE_PERCENT:-}
       DEFAULT_ADDITIONAL_FEE_PER_GALLON: ${DEFAULT_ADDITIONAL_FEE_PER_GALLON:-}
     volumes:

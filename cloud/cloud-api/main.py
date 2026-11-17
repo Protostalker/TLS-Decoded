@@ -74,6 +74,10 @@ def _migrate_schema() -> None:
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_secondary_color TEXT"))
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_accent_color TEXT"))
         conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS brand_logo_data_url TEXT"))
+        # Map pin — see models.py's Station.address/lat/lng.
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS address TEXT"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE stations ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION"))
         # Supplier workflow tables — create_all handles new tables, but we add
         # explicit idempotent DDL here in case the DB was provisioned from an
         # older image that ran create_all before these models existed.
@@ -87,6 +91,14 @@ def _migrate_schema() -> None:
                 snoozed_until TIMESTAMPTZ NOT NULL
             )
         """))
+        # Delivery timer fields (distance/route-estimate phase) — see
+        # models.py's FuelOrder docstring. All nullable/additive.
+        conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS origin_label TEXT"))
+        conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS origin_lat DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS origin_lng DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ"))
+        conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS eta_minutes DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS route_distance_km DOUBLE PRECISION"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id BIGSERIAL PRIMARY KEY,

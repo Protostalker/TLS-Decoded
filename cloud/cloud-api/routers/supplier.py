@@ -18,10 +18,13 @@ from sqlalchemy.orm import Session
 
 from auth import assigned_station_ids, get_current_user, require_not_degraded, require_station_access
 from database import get_db
+from delivery import delivery_progress
+from geocoding import geocode_address
 from models import (
     CloudReading, CloudTank, Customer, FuelOrder,
     Notification, PushSubscription, Station, User,
 )
+from routing import route as route_lookup
 from schemas import FuelOrderRequest
 
 # Gated by license state — supplier ordering is explicit-non-gated-item #1 in
@@ -110,6 +113,10 @@ def _build_supplier_station(db: Session, station: Station) -> dict:
         "name": station.name,
         "customer_name": cust.name if cust else None,
         "last_sync_at": station.last_sync_at,
+        # Whether this station has a map pin yet — the supplier order modal
+        # uses this to warn that a pickup address won't produce a timer
+        # without one (see routing.route's destination requirement).
+        "lat": station.lat, "lng": station.lng,
         "tanks": tank_summaries,
         # Urgency: driven by the single most-critical tank.
         "urgency_pct": min_pct,        # lowest fill % — primary sort key
@@ -122,6 +129,9 @@ def _build_supplier_station(db: Session, station: Station) -> dict:
             "ordered_at": snooze.ordered_at.isoformat(),
             "eta_note": snooze.eta_note,
             "snoozed_until": snooze.snoozed_until.isoformat(),
+            # None unless the supplier gave a pickup address at order time
+            # AND it geocoded/routed successfully — see mark_fuel_ordered.
+            "delivery": delivery_progress(snooze),
         } if snooze else None,
     }
 
@@ -179,12 +189,39 @@ def mark_fuel_ordered(
     now = datetime.now(tz=timezone.utc)
     snoozed_until = now + timedelta(hours=6)
 
+    # Delivery timer — entirely optional and best-effort. Only attempted
+    # when the supplier gave a pickup address AND the station already has
+    # a map pin (no destination to route to otherwise). A geocoding or
+    # routing failure just means no timer, never blocks the order.
+    origin_label = origin_lat = origin_lng = dispatched_at = eta_minutes = route_distance_km = None
+    route_suggestion = None
+    if body.origin_address and body.origin_address.strip() and station.lat is not None and station.lng is not None:
+        geo = geocode_address(body.origin_address.strip())
+        if geo:
+            origin_label = body.origin_address.strip()
+            origin_lat, origin_lng = geo["lat"], geo["lng"]
+            result = route_lookup(origin_lat, origin_lng, station.lat, station.lng, alternatives=True)
+            if result:
+                dispatched_at = now
+                eta_minutes = result["duration_min"]
+                route_distance_km = result["distance_km"]
+                if result.get("alternative"):
+                    route_suggestion = {
+                        "message": (
+                            f"A faster route may exist: ~{result['alternative']['duration_min']:.0f} min "
+                            f"vs. ~{result['duration_min']:.0f} min for the one used for this ETA."
+                        ),
+                        **result["alternative"],
+                    }
+
     order = FuelOrder(
         station_id=station_id,
         supplier_user_id=user.id,
         ordered_at=now,
         eta_note=body.eta_note or None,
         snoozed_until=snoozed_until,
+        origin_label=origin_label, origin_lat=origin_lat, origin_lng=origin_lng,
+        dispatched_at=dispatched_at, eta_minutes=eta_minutes, route_distance_km=route_distance_km,
     )
     db.add(order)
     db.flush()  # populate order.id before creating notifications
@@ -213,7 +250,12 @@ def mark_fuel_ordered(
         "tag": f"fuel-ordered-{station_id}",
     })
 
-    return {"ok": True, "snoozed_until": snoozed_until.isoformat()}
+    return {
+        "ok": True,
+        "snoozed_until": snoozed_until.isoformat(),
+        "delivery": delivery_progress(order),
+        "route_suggestion": route_suggestion,
+    }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

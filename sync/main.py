@@ -167,6 +167,29 @@ def get_branding_settings(engine: sqlalchemy.Engine) -> dict:
     }
 
 
+# Site name/address the poller parsed straight out of the gauge's own
+# response (see poller/network_driver.py's _parse_station_header and
+# poller/main.py's save_detected_address) — not every TLS-350 has one
+# configured, so these are frequently both None, which is fine: the cloud
+# side only uses `detected_station_address` to auto-fill a station's address
+# when nothing has been set there yet (manual entry or a prior detection
+# always wins — see cloud-api/routers/ingest.py).
+ADDRESS_KEYS = ("detected_station_name", "detected_station_address")
+
+
+def get_detected_address_settings(engine: sqlalchemy.Engine) -> dict:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT key, value FROM settings WHERE key = ANY(:keys)"),
+            {"keys": list(ADDRESS_KEYS)},
+        ).fetchall()
+    v = {r.key: r.value for r in rows}
+    return {
+        "detected_station_name": v.get("detected_station_name") or None,
+        "detected_station_address": v.get("detected_station_address") or None,
+    }
+
+
 def get_setting(engine: sqlalchemy.Engine, key: str) -> Optional[str]:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT value FROM settings WHERE key = :k"), {"k": key}).first()
@@ -603,11 +626,11 @@ def run_sync_cycle(engine: sqlalchemy.Engine, client: httpx.Client, cloud_url: s
     # one cycle isn't worth retrying the whole sync loop over, it'll just go
     # out again next cycle.
     try:
-        branding = get_branding_settings(engine)
-        if any(branding.values()):
-            push_with_retry(client, cloud_url, headers, {"station_info": branding}, max_attempts=1)
+        station_info = {**get_branding_settings(engine), **get_detected_address_settings(engine)}
+        if any(station_info.values()):
+            push_with_retry(client, cloud_url, headers, {"station_info": station_info}, max_attempts=1)
     except Exception:
-        logger.exception("Failed to push branding — will retry next cycle")
+        logger.exception("Failed to push branding/address — will retry next cycle")
 
     return not any_failure
 

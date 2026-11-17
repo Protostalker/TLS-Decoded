@@ -13,6 +13,7 @@ const RANGES = [
   { key: '72h', label: '72 hours', predict: '18h' },
   { key: '5d', label: '5 days', predict: '24h' },
   { key: '7d', label: '7 days', predict: '36h' },
+  { key: '96h_forecast', label: '96h forecast', predict: '96h' },
 ]
 const RANGE_STORAGE_KEY = 'tls_cloud_forecast_range'
 const REFRESH_MS = 5 * 60_000
@@ -128,7 +129,20 @@ export default function ForecastChart({ stationId }) {
       return { ...tank, color, actual, predPts }
     })
 
-    return { times, t0, t1, nowMs, x, y, yMax, yTicks, plotW, plotH, tanks, xTicks: makeXTicks(times, plotW, fmt) }
+    // Holidays are tagged per-station (same dates for every tank), but
+    // "adjusted" (real historical data vs. no data yet) can differ per tank
+    // — show it as adjusted if ANY tank has learned a profile for that date.
+    const holidayByDate = new Map()
+    for (const tank of data.tanks) {
+      for (const h of tank.holidays || []) {
+        const prev = holidayByDate.get(h.date)
+        holidayByDate.set(h.date, { date: h.date, name: h.name, adjusted: !!(prev?.adjusted || h.adjusted) })
+      }
+    }
+    const holidays = [...holidayByDate.values()].map(h => ({ ...h, ms: Date.parse(h.date) }))
+      .filter(h => h.ms >= t0 && h.ms <= t1)
+
+    return { times, t0, t1, nowMs, x, y, yMax, yTicks, plotW, plotH, tanks, holidays, xTicks: makeXTicks(times, plotW, fmt) }
   }, [data, width, fmt, isLight])
 
   const onPointer = (e) => {
@@ -197,6 +211,19 @@ export default function ForecastChart({ stationId }) {
                       fill="var(--brand-text-dimmer, #64748b)">{tk.label}</text>
               ))}
 
+              {/* Holiday markers */}
+              {chart.holidays.map(h => (
+                <g key={h.date}>
+                  <line x1={chart.x(h.ms)} x2={chart.x(h.ms)} y1={PAD.top} y2={PAD.top + chart.plotH}
+                        stroke={h.adjusted ? '#f59e0b' : 'var(--brand-text-faint, #475569)'} strokeWidth={1}
+                        strokeDasharray="1 3" opacity={0.8} />
+                  <text x={chart.x(h.ms)} y={PAD.top - 4} fontSize={9} textAnchor="middle"
+                        fill={h.adjusted ? '#f59e0b' : 'var(--brand-text-faint, #475569)'}>
+                    {h.name}{h.adjusted ? '' : ' *'}
+                  </text>
+                </g>
+              ))}
+
               {/* Now marker */}
               {chart.nowMs >= chart.t0 && chart.nowMs <= chart.t1 && (
                 <g>
@@ -249,6 +276,14 @@ export default function ForecastChart({ stationId }) {
       <div style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)', marginTop: 10 }}>
         Prediction uses each tank's selling pattern by hour of day over the last 4 weeks, starting from its latest
         synced reading. It assumes no delivery arrives. Times shown in station time.
+        {chart?.holidays?.length > 0 && (
+          <>
+            {' '}Holidays in range: {chart.holidays.map(h => h.name + (h.adjusted ? '' : ' *')).join(', ')}.
+            {chart.holidays.some(h => !h.adjusted) && (
+              <> * no adjustment yet — this station hasn't lived through this holiday before; it'll use real data the next time it comes around.</>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

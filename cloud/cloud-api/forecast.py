@@ -27,23 +27,42 @@ How the prediction works:
    forecast at all.
 3. Starting from the tank's latest reading, walk forward hour by hour
    subtracting rate[hour of day]. Clamped at 0. Assumes no delivery.
+
+Holiday awareness (see holidays.py): a future grid point that falls on a
+named holiday is tagged as such regardless of data, but the PREDICTED VALUE
+only changes if this station has its own historical readings from a prior
+occurrence of that same holiday — see holiday_profile_for_dates() below. No
+generic "holidays get +20%" guess is applied; there simply isn't enough
+history yet on a system this new to justify one, and a wrong guess is worse
+than no adjustment. Once a station has lived through a holiday once, its
+next occurrence uses that real data automatically — nothing to configure.
 """
 from __future__ import annotations
 
 from bisect import bisect_right
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 # range key -> (past_hours, future_hours, step_hours). The window is the
-# TOTAL width: e.g. "24h" = 16h actual + 8h predicted.
+# TOTAL width: e.g. "24h" = 16h actual + 8h predicted. "96h_forecast" is the
+# one exception to the "key = total width" convention — it's named for what
+# it guarantees (a forward-looking prediction out to 96h), not the chart's
+# total width, since that's the feature being asked for directly.
 FORECAST_RANGES: dict[str, tuple[int, int, int]] = {
     "24h": (16, 8, 1),
     "48h": (36, 12, 1),
     "72h": (54, 18, 1),
     "5d": (96, 24, 2),
     "7d": (132, 36, 3),
+    "96h_forecast": (24, 96, 4),
 }
+
+# How many hours of same-holiday historical data (across all prior
+# occurrences combined) are needed before trusting a holiday-specific rate
+# over the generic hour-of-day profile. Low bar on purpose — even one past
+# occurrence with partial data is better signal than none for a single day.
+MIN_HOLIDAY_HOURS = 6.0
 
 PROFILE_DAYS = 28
 MAX_GAP_HOURS = 3.0
@@ -111,18 +130,54 @@ def build_hourly_profile(rows: Sequence[Reading], tz: ZoneInfo) -> Optional[dict
     }
 
 
-def project_volume(t0: datetime, v0: float, t1: datetime, rates: Sequence[float], tz: ZoneInfo) -> float:
+def holiday_profile_for_dates(rows: Sequence[Reading], tz: ZoneInfo, dates: set[date]) -> Optional[dict]:
+    """
+    Same math as build_hourly_profile, restricted to readings whose
+    station-local calendar date is in `dates` (the station's own prior
+    occurrences of one specific holiday — see holidays.py's
+    past_occurrences()). `rows` should be this tank's FULL reading history,
+    not just the normal PROFILE_DAYS window, since a holiday a year ago is
+    well outside that window.
+
+    Returns None if there's no data at all for those dates (the common case
+    on a new station — nothing wrong, just nothing to learn from yet).
+    """
+    filtered = [(t, v) for t, v in rows if t.astimezone(tz).date() in dates]
+    if len(filtered) < 2:
+        return None
+    profile = build_hourly_profile(filtered, tz)
+    if profile is None or profile["observed_hours"] < MIN_HOLIDAY_HOURS:
+        return None
+    return profile
+
+
+def _rate_for(seg_start: datetime, tz: ZoneInfo, rates: Sequence[float],
+              holiday_rates: Optional[dict[date, Sequence[float]]]) -> float:
+    """The generic hour-of-day rate, unless seg_start's local date has a
+    learned holiday-specific profile (see holiday_profile_for_dates), in
+    which case that wins for just that day."""
+    local = seg_start.astimezone(tz)
+    if holiday_rates:
+        override = holiday_rates.get(local.date())
+        if override is not None:
+            return override[local.hour]
+    return rates[local.hour]
+
+
+def project_volume(t0: datetime, v0: float, t1: datetime, rates: Sequence[float], tz: ZoneInfo,
+                   holiday_rates: Optional[dict[date, Sequence[float]]] = None) -> float:
     """Volume at t1 starting from v0 at t0, using the hour-of-day rates."""
     v = v0
     for seg_start, seg_hours in _segments(t0, t1):
-        v -= rates[seg_start.astimezone(tz).hour] * seg_hours
+        v -= _rate_for(seg_start, tz, rates, holiday_rates) * seg_hours
         if v <= 0:
             return 0.0
     return v
 
 
 def time_until_level(t0: datetime, v0: float, level: float, rates: Sequence[float], tz: ZoneInfo,
-                     horizon_hours: float = PROJECTION_HORIZON_HOURS) -> Optional[datetime]:
+                     horizon_hours: float = PROJECTION_HORIZON_HOURS,
+                     holiday_rates: Optional[dict[date, Sequence[float]]] = None) -> Optional[datetime]:
     """First time the projected volume drops to `level`, or None if it does
     not within the horizon (or the tank is already at/below it)."""
     if v0 <= level:
@@ -130,7 +185,7 @@ def time_until_level(t0: datetime, v0: float, level: float, rates: Sequence[floa
     v = v0
     end = t0 + timedelta(hours=horizon_hours)
     for seg_start, seg_hours in _segments(t0, end):
-        r = rates[seg_start.astimezone(tz).hour]
+        r = _rate_for(seg_start, tz, rates, holiday_rates)
         drop = r * seg_hours
         if r > 0 and v - drop <= level:
             return seg_start + timedelta(hours=(v - level) / r)
@@ -153,11 +208,21 @@ def window_grid(now: datetime, range_key: str, tz: ZoneInfo) -> tuple[datetime, 
 
 
 def tank_series(rows: Sequence[Reading], grid: Sequence[datetime], profile: Optional[dict],
-                tz: ZoneInfo, step_hours: int, reorder_threshold: Optional[float]) -> dict:
+                tz: ZoneInfo, step_hours: int, reorder_threshold: Optional[float],
+                holiday_tags: Optional[dict[date, str]] = None,
+                holiday_rates: Optional[dict[date, Sequence[float]]] = None) -> dict:
     """Per-tank values on the shared grid. A grid point at or before the
     latest reading is ACTUAL (latest reading at or before that time, if one
     exists within the tolerance; else None = gap). A grid point after the
-    latest reading is PREDICTED from that latest reading."""
+    latest reading is PREDICTED from that latest reading.
+
+    holiday_tags: every date in the grid's future that's a named holiday,
+    regardless of whether there's data to adjust for it (so the frontend can
+    always show "Thanksgiving" on the axis). holiday_rates: the subset of
+    those with a learned profile from this tank's own history — see
+    holiday_profile_for_dates(). A tagged-but-not-in-holiday_rates date still
+    uses the generic profile; "holidays[*].adjusted" tells the frontend which
+    is which rather than it having to guess from the numbers."""
     out = {
         "values": [None] * len(grid),
         "predicted": [False] * len(grid),
@@ -165,7 +230,13 @@ def tank_series(rows: Sequence[Reading], grid: Sequence[datetime], profile: Opti
         "last_volume_gallons": None,
         "projected_reorder_at": None,
         "projected_empty_at": None,
+        "holidays": [],
     }
+    if holiday_tags:
+        out["holidays"] = [
+            {"date": d.isoformat(), "name": name, "adjusted": bool(holiday_rates and d in holiday_rates)}
+            for d, name in sorted(holiday_tags.items())
+        ]
     if not rows:
         return out
 
@@ -181,13 +252,16 @@ def tank_series(rows: Sequence[Reading], grid: Sequence[datetime], profile: Opti
             if idx >= 0 and t - times[idx] <= tolerance:
                 out["values"][i] = round(rows[idx][1], 1)
         elif profile is not None:
-            out["values"][i] = round(project_volume(last_t, last_v, t, profile["rates"], tz), 1)
+            out["values"][i] = round(
+                project_volume(last_t, last_v, t, profile["rates"], tz, holiday_rates), 1
+            )
             out["predicted"][i] = True
 
     if profile is not None:
         if reorder_threshold:
-            r = time_until_level(last_t, last_v, reorder_threshold, profile["rates"], tz)
+            r = time_until_level(last_t, last_v, reorder_threshold, profile["rates"], tz,
+                                  holiday_rates=holiday_rates)
             out["projected_reorder_at"] = r.isoformat() if r else None
-        e = time_until_level(last_t, last_v, 0.0, profile["rates"], tz)
+        e = time_until_level(last_t, last_v, 0.0, profile["rates"], tz, holiday_rates=holiday_rates)
         out["projected_empty_at"] = e.isoformat() if e else None
     return out
