@@ -96,6 +96,11 @@ function RacksTab() {
     finally { setSaving(false) }
   }
 
+  const remove = async (rack) => {
+    if (!window.confirm(`Delete rack "${rack.name}"? This also deletes any loads (and delivery runs) ever drawn from it. This cannot be undone.`)) return
+    try { await api.fleet.deleteRack(rack.id); load() } catch (e) { setError(e.message) }
+  }
+
   return (
     <div>
       <form onSubmit={create} style={{ ...card, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -113,13 +118,14 @@ function RacksTab() {
       <div style={card}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
-            <thead><tr><th style={th}>Name</th><th style={th}>Address</th><th style={th}>Pin</th></tr></thead>
+            <thead><tr><th style={th}>Name</th><th style={th}>Address</th><th style={th}>Pin</th><th style={th}></th></tr></thead>
             <tbody>
               {racks?.map(r => (
                 <tr key={r.id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
                   <td style={td}>{r.name}</td>
                   <td style={{ ...td, color: 'var(--brand-text-dimmer, #64748b)' }}>{r.address || '—'}</td>
                   <td style={td}>{r.lat != null ? <span style={{ color: '#86efac' }}>📍 pinned</span> : <span style={{ color: 'var(--brand-text-faint, #475569)' }}>not located</span>}</td>
+                  <td style={td}><button onClick={() => remove(r)} style={{ ...btnGhost, color: '#fca5a5' }}>Delete</button></td>
                 </tr>
               ))}
             </tbody>
@@ -163,12 +169,37 @@ function TankersTab() {
     finally { setSaving(false) }
   }
 
+  const remove = async (t) => {
+    if (!window.confirm(`Delete tanker "${t.label}"? This also deletes every load and delivery run ever built from it. This cannot be undone.\n\n(If you just want to retire it without losing history, leave it and stop selecting it for new loads instead.)`)) return
+    try { await api.fleet.deleteTanker(t.id); load() } catch (e) { setError(e.message) }
+  }
+
+  // "Shape" label — e.g. "10,000 gal" for one compartment, "2 x 10,000 gal
+  // (20,000 total)" for a split tanker. This is the "type" a supplier is
+  // really picking when they pick a tanker — the same Tanker row gets
+  // reused trip after trip with different contents each time (see Loads
+  // tab), it's never tied to a single delivery.
+  const shapeLabel = (t) => {
+    if (!t.compartments.length) return 'No compartments'
+    const caps = t.compartments.map(c => c.capacity_gallons)
+    const total = caps.reduce((a, b) => a + b, 0)
+    if (caps.length === 1) return `${caps[0].toLocaleString()} gal`
+    return `${caps.length} x compartments (${total.toLocaleString()} gal total)`
+  }
+
   return (
     <div>
+      <div style={{ fontSize: 12, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 14 }}>
+        A tanker here is really a reusable <strong>type</strong> — its compartment shape (e.g. "10k single" or
+        "10k+10k split") is defined once below, then reused for as many loads/runs as you like. What's actually
+        inside it is chosen fresh every time on the Loads tab, so the same tanker can carry diesel one trip and a
+        50/50 split the next.
+      </div>
+
       <form onSubmit={create} style={card}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 14 }}>
           <Field label="Tanker label">
-            <input required value={label} onChange={e => setLabel(e.target.value)} style={inputStyle} placeholder="e.g. Tanker 7" />
+            <input required value={label} onChange={e => setLabel(e.target.value)} style={inputStyle} placeholder="e.g. Tanker 7, or '10k Single'" />
           </Field>
         </div>
 
@@ -192,7 +223,13 @@ function TankersTab() {
 
       {tankers?.map(t => (
         <div key={t.id} style={card}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>{t.label}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <span style={{ fontWeight: 700 }}>{t.label}</span>
+              <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>{shapeLabel(t)}</span>
+            </div>
+            <button onClick={() => remove(t)} style={{ ...btnGhost, color: '#fca5a5' }}>Delete</button>
+          </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {t.compartments.map(c => (
               <div key={c.id} style={{ background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
@@ -277,6 +314,11 @@ function LoadsTab() {
     finally { setSaving(false) }
   }
 
+  const removeLoad = async (l) => {
+    if (!window.confirm(`Delete this load (${l.tanker_label} from ${l.loading_rack_name})? This also deletes any delivery runs built from it. This cannot be undone.`)) return
+    try { await api.fleet.deleteLoad(l.id); load() } catch (e) { setError(e.message) }
+  }
+
   return (
     <div>
       <form onSubmit={create} style={card}>
@@ -328,9 +370,12 @@ function LoadsTab() {
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 10 }}>Open loads (not yet fully allocated to a delivery run)</div>
       {loads?.map(l => (
         <div key={l.id} style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ fontWeight: 700 }}>{l.tanker_label} <span style={{ color: 'var(--brand-text-dimmer, #64748b)', fontWeight: 400 }}>from {l.loading_rack_name}</span></div>
-            <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>{new Date(l.loaded_at).toLocaleString()}</div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>{new Date(l.loaded_at).toLocaleString()}</div>
+              <button onClick={() => removeLoad(l)} style={{ ...btnGhost, color: '#fca5a5' }}>Delete</button>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {l.items.map(i => (
@@ -413,6 +458,11 @@ function RunsTab() {
     try { await api.fleet.arriveStop(runId, stopId); load() } catch (e) { setError(e.message) }
   }
 
+  const removeRun = async (runId) => {
+    if (!window.confirm(`Delete run #${runId}? Any gallons it drew from its load will be returned (the load becomes open again). This cannot be undone.`)) return
+    try { await api.fleet.deleteRun(runId); load() } catch (e) { setError(e.message) }
+  }
+
   return (
     <div>
       <form onSubmit={create} style={card}>
@@ -465,13 +515,13 @@ function RunsTab() {
       {error && <ErrorBox message={error} />}
 
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 10 }}>Active delivery runs</div>
-      {runs?.map(r => <RunCard key={r.id} run={r} onArrive={arrive} />)}
+      {runs?.map(r => <RunCard key={r.id} run={r} onArrive={arrive} onDelete={removeRun} />)}
       {runs?.length === 0 && <div style={{ ...card, color: 'var(--brand-text-faint, #475569)', textAlign: 'center' }}>No active delivery runs.</div>}
     </div>
   )
 }
 
-function RunCard({ run, onArrive }) {
+function RunCard({ run, onArrive, onDelete }) {
   const totalDistance = run.stops.reduce((sum, s) => sum + (s.distance_km || 0), 0)
   const totalMinutes = run.stops.reduce((sum, s) => sum + (s.eta_minutes || 0), 0)
   const delivered = run.stops.filter(s => s.status === 'delivered').length
@@ -492,6 +542,7 @@ function RunCard({ run, onArrive }) {
             background: run.status === 'completed' ? '#052e16' : '#1e3a5f',
             color: run.status === 'completed' ? '#86efac' : '#93c5fd',
           }}>{run.status}</span>
+          {onDelete && <button onClick={() => onDelete(run.id)} style={{ ...btnGhost, color: '#fca5a5' }}>Delete</button>}
         </div>
       </div>
       {run.stops.map(stop => (

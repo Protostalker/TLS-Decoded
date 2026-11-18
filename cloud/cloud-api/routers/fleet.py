@@ -40,9 +40,10 @@ from database import get_db
 from delivery import delivery_progress
 from geocoding import geocode_address
 from models import (
-    DeliveryRun, DeliveryStop, DeliveryStopItem, LoadingRack, Station,
-    Tanker, TankerCompartment, TankerLoad, TankerLoadItem, User,
+    DeliveryRun, DeliveryStop, DeliveryStopItem, LoadingRack, Notification,
+    Station, Tanker, TankerCompartment, TankerLoad, TankerLoadItem, User,
 )
+from routers.supplier import _fire_push, _station_recipients
 from routing import route as route_lookup
 from schemas import (
     ArriveStopRequest, DeliveryRunCreate, DeliveryRunOut, DeliveryStopOut,
@@ -379,6 +380,40 @@ def _get_run_scoped(run_id: int, user: User, db: Session) -> DeliveryRun:
     return run
 
 
+def _notify_stop_in_transit(db: Session, run: DeliveryRun, stop: DeliveryStop, station: Station) -> None:
+    """Tell the station's own recipients (their assigned users + all admins
+    — see supplier.py's _station_recipients) that a tanker is now heading
+    their way for this leg. Reuses the exact Notification/_fire_push pattern
+    supplier.py's fuel-ordered flow uses, just with a different message/type,
+    so both show up in the same notification bell."""
+    recipient_ids = _station_recipients(db, station.id)
+    if not recipient_ids:
+        return
+    eta_str = f"~{round(stop.eta_minutes)} min" if stop.eta_minutes else "ETA not available"
+    message = f"A delivery is on its way to {station.name} — {eta_str}."
+    now = datetime.now(tz=timezone.utc)
+    for rid in recipient_ids:
+        db.add(Notification(user_id=rid, station_id=station.id, type="delivery_in_transit", message=message, created_at=now))
+    db.flush()
+    _fire_push(db, recipient_ids, {"title": f"Fuel on the way — {station.name}", "body": eta_str, "tag": f"delivery-{run.id}-{stop.id}"})
+
+
+def _notify_stop_delivered(db: Session, run: DeliveryRun, stop: DeliveryStop, station: Station) -> None:
+    """Delivery confirmed at this stop — let the station know, with the
+    download-report link baked right into the message (no SMTP; this is
+    read in-app via the notification bell, same as everything else here)."""
+    recipient_ids = _station_recipients(db, station.id)
+    if not recipient_ids:
+        return
+    report_path = f"/api/stations/{station.id}/deliveries/{run.id}/report"
+    message = f"Delivery confirmed at {station.name}. Download the report: {report_path}"
+    now = datetime.now(tz=timezone.utc)
+    for rid in recipient_ids:
+        db.add(Notification(user_id=rid, station_id=station.id, type="delivery_confirmed", message=message, created_at=now))
+    db.flush()
+    _fire_push(db, recipient_ids, {"title": f"Delivery confirmed — {station.name}", "body": "Report is ready to download.", "tag": f"delivery-{run.id}-{stop.id}"})
+
+
 @router.post("/fleet/runs", response_model=DeliveryRunOut)
 def create_run(body: DeliveryRunCreate, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
     load = _get_load_scoped(body.tanker_load_id, user, db)
@@ -435,6 +470,7 @@ def create_run(body: DeliveryRunCreate, user: User = Depends(_require_supplier),
 
     prev_lat, prev_lng = (rack.lat, rack.lng) if rack else (None, None)
     stops_created: list[DeliveryStop] = []
+    first_stop_station: Optional[Station] = None
     for idx, stop_in in enumerate(body.stops):
         station = db.query(Station).filter(Station.id == stop_in.station_id).first()
         if not station:
@@ -461,9 +497,20 @@ def create_run(body: DeliveryRunCreate, user: User = Depends(_require_supplier),
                 product=load_items[item_in.tanker_load_item_id].product, gallons_planned=item_in.gallons,
             ))
         stops_created.append(stop)
+        if idx == 0:
+            first_stop_station = station
 
     for item_id, total_draw in draw_totals.items():
         load_items[item_id].gallons_remaining -= total_draw
+
+    # The first leg starts moving immediately (stop 0 is "in_transit" from
+    # the moment the run is dispatched) — tell that station right away.
+    # Best-effort: a notification hiccup should never block dispatch.
+    if first_stop_station is not None:
+        try:
+            _notify_stop_in_transit(db, run, stops_created[0], first_stop_station)
+        except Exception:
+            pass
 
     db.commit()
     return _run_out(db, run)
@@ -490,6 +537,13 @@ def arrive_stop_core(db: Session, run: DeliveryRun, stop_id: int, body: ArriveSt
     for i in items:
         i.gallons_delivered = overrides.get(i.id, i.gallons_planned)
 
+    station = db.query(Station).filter(Station.id == stop.station_id).first()
+    if station is not None:
+        try:
+            _notify_stop_delivered(db, run, stop, station)
+        except Exception:
+            pass  # notification hiccup should never block confirming a delivery
+
     # Start the next leg's clock, or close out the run if this was the last stop.
     next_stop = (
         db.query(DeliveryStop)
@@ -499,6 +553,12 @@ def arrive_stop_core(db: Session, run: DeliveryRun, stop_id: int, body: ArriveSt
     if next_stop:
         next_stop.status = "in_transit"
         next_stop.started_at = now
+        next_station = db.query(Station).filter(Station.id == next_stop.station_id).first()
+        if next_station is not None:
+            try:
+                _notify_stop_in_transit(db, run, next_stop, next_station)
+            except Exception:
+                pass
     else:
         run.status = "completed"
         run.completed_at = now
@@ -514,6 +574,88 @@ def arrive_stop(
 ):
     run = _get_run_scoped(run_id, user, db)
     return arrive_stop_core(db, run, stop_id, body)
+
+
+# ── Deletes (testing cleanup) ────────────────────────────────────────────────
+#
+# Hard deletes, scoped to the caller's own customer the same way every GET
+# here is. Each one cascades downward so cleanup never leaves orphans:
+# deleting a rack/tanker/load takes any runs built from it with it; deleting
+# a run alone restores the gallons it drew from its load so that load goes
+# back to "open." There's no "soft undo" here on purpose — this exists for
+# clearing out test data, not for day-to-day archiving (racks/tankers still
+# have `active` for that — see update_rack and the Tankers tab's own
+# active-only listing).
+
+def _cascade_delete_run(db: Session, run: DeliveryRun, restore_gallons: bool) -> None:
+    stops = db.query(DeliveryStop).filter(DeliveryStop.delivery_run_id == run.id).all()
+    if stops:
+        stop_ids = [s.id for s in stops]
+        items = db.query(DeliveryStopItem).filter(DeliveryStopItem.delivery_stop_id.in_(stop_ids)).all()
+        if restore_gallons:
+            load_items = {
+                li.id: li for li in
+                db.query(TankerLoadItem).filter(TankerLoadItem.id.in_([i.tanker_load_item_id for i in items])).all()
+            }
+            for i in items:
+                li = load_items.get(i.tanker_load_item_id)
+                if li:
+                    li.gallons_remaining += i.gallons_planned
+        for i in items:
+            db.delete(i)
+        for s in stops:
+            db.delete(s)
+    db.delete(run)
+
+
+def _cascade_delete_load(db: Session, load: TankerLoad) -> None:
+    for run in db.query(DeliveryRun).filter(DeliveryRun.tanker_load_id == load.id).all():
+        _cascade_delete_run(db, run, restore_gallons=False)  # load itself is going away too
+    for item in db.query(TankerLoadItem).filter(TankerLoadItem.tanker_load_id == load.id).all():
+        db.delete(item)
+    db.delete(load)
+
+
+@router.delete("/fleet/runs/{run_id}", status_code=204)
+def delete_run(run_id: int, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """Deletes a delivery run and its stops, restoring whatever gallons it
+    had drawn from its load (which keeps existing — only the run goes)."""
+    run = _get_run_scoped(run_id, user, db)
+    _cascade_delete_run(db, run, restore_gallons=True)
+    db.commit()
+
+
+@router.delete("/fleet/loads/{load_id}", status_code=204)
+def delete_load(load_id: int, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """Deletes a load and everything built from it (any delivery runs,
+    their stops) — the tanker and rack it used are untouched."""
+    load = _get_load_scoped(load_id, user, db)
+    _cascade_delete_load(db, load)
+    db.commit()
+
+
+@router.delete("/fleet/tankers/{tanker_id}", status_code=204)
+def delete_tanker(tanker_id: int, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """Deletes a tanker, its compartments, and every load/run ever built
+    from it. For retiring a tanker without losing delivery history, use
+    PUT .../tankers (active=false) instead — this is for clearing test data."""
+    tanker = _get_tanker_scoped(tanker_id, user, db)
+    for load in db.query(TankerLoad).filter(TankerLoad.tanker_id == tanker.id).all():
+        _cascade_delete_load(db, load)
+    for comp in db.query(TankerCompartment).filter(TankerCompartment.tanker_id == tanker.id).all():
+        db.delete(comp)
+    db.delete(tanker)
+    db.commit()
+
+
+@router.delete("/fleet/racks/{rack_id}", status_code=204)
+def delete_rack(rack_id: int, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """Deletes a loading rack and every load/run ever built from it."""
+    rack = _get_rack_scoped(rack_id, user, db)
+    for load in db.query(TankerLoad).filter(TankerLoad.loading_rack_id == rack.id).all():
+        _cascade_delete_load(db, load)
+    db.delete(rack)
+    db.commit()
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────

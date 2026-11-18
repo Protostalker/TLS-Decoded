@@ -10,17 +10,18 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from auth import create_magic_link, gen_device_id, gen_device_secret, hash_secret, require_admin
+from auth import create_magic_link, create_session, gen_device_id, gen_device_secret, hash_secret, require_admin
 from database import get_db
 from geocoding import geocode_address
 from models import Customer, Station, User, UserSession, UserStationAssignment
+from routers.auth_router import _me_out
 from schemas import (
     AssignmentCreate, CustomerCreate, CustomerOut, GeocodeRequest, GeocodeResponse,
-    MagicLinkOut, SessionOut, SetPasswordRequest,
+    LoginResponse, MagicLinkOut, SessionOut, SetPasswordRequest,
     StationCreate, StationCredentialOut, StationOut, StationUpdate,
     UserCreate, UserOut, UserUpdate,
 )
@@ -293,6 +294,33 @@ def generate_magic_link(user_id: int, db: Session = Depends(get_db)):
     token = create_magic_link(db, u)
     expires_at = datetime.now(tz=timezone.utc) + timedelta(hours=MAGIC_LINK_VALID_HOURS)
     return MagicLinkOut(token=token, path=f"/magic/{token}", expires_at=expires_at)
+
+
+@router.post("/admin/users/{user_id}/impersonate", response_model=LoginResponse)
+def impersonate_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    """
+    "Log in as" this user — for when a stubborn fuel-provider account
+    holder would rather an admin just set their fleet up for them than
+    learn the UI themselves. Creates a brand new, completely normal
+    session for the target user (nothing about their account changes,
+    no password is touched) and hands the token straight back; the
+    frontend swaps to it and remembers the admin's own token so it can
+    switch back later (see AuthContext.impersonate/returnToAdmin).
+    A "short" session on purpose — this is meant to be a quick visit,
+    not a standing login.
+    """
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not u.active:
+        raise HTTPException(status_code=400, detail="That account is deactivated")
+    token = create_session(
+        db, u, duration="short",
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    return LoginResponse(token=token, user=_me_out(db, u))
 
 
 # ── Assignments ───────────────────────────────────────────────────────────────

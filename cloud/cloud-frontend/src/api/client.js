@@ -33,6 +33,11 @@ async function request(path, opts = {}) {
 }
 
 export const api = {
+  // ── Session token (exposed for AuthContext's admin-impersonation
+  // switch — swapping tokens without a real login/logout round trip) ──
+  getSessionToken: () => getToken(),
+  setSessionToken: (t) => setToken(t),
+
   // ── Auth ──
   login: async (email, password, duration) => {
     const result = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, duration }) })
@@ -102,18 +107,22 @@ export const api = {
     racks: () => request('/fleet/racks'),
     createRack: (body) => request('/fleet/racks', { method: 'POST', body: JSON.stringify(body) }),
     updateRack: (id, body) => request(`/fleet/racks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deleteRack: (id) => request(`/fleet/racks/${id}`, { method: 'DELETE' }),
 
     tankers: () => request('/fleet/tankers'),
     createTanker: (body) => request('/fleet/tankers', { method: 'POST', body: JSON.stringify(body) }),
     addCompartment: (tankerId, body) => request(`/fleet/tankers/${tankerId}/compartments`, { method: 'POST', body: JSON.stringify(body) }),
+    deleteTanker: (id) => request(`/fleet/tankers/${id}`, { method: 'DELETE' }),
 
     loads: (openOnly = true) => request(`/fleet/loads?open_only=${openOnly}`),
     createLoad: (body) => request('/fleet/loads', { method: 'POST', body: JSON.stringify(body) }),
+    deleteLoad: (id) => request(`/fleet/loads/${id}`, { method: 'DELETE' }),
 
     runs: (activeOnly = true) => request(`/fleet/runs?active_only=${activeOnly}`),
     createRun: (body) => request('/fleet/runs', { method: 'POST', body: JSON.stringify(body) }),
     arriveStop: (runId, stopId, body = { items: [] }) =>
       request(`/fleet/runs/${runId}/stops/${stopId}/arrive`, { method: 'POST', body: JSON.stringify(body) }),
+    deleteRun: (id) => request(`/fleet/runs/${id}`, { method: 'DELETE' }),
 
     drivers: () => request('/fleet/drivers'),
 
@@ -174,6 +183,7 @@ export const api = {
     updateUser: (id, body) => request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     setUserPassword: (userId, password) => request(`/admin/users/${userId}/set-password`, { method: 'POST', body: JSON.stringify({ password }) }),
     generateMagicLink: (userId) => request(`/admin/users/${userId}/magic-link`, { method: 'POST' }),
+    impersonate: (userId) => request(`/admin/users/${userId}/impersonate`, { method: 'POST' }),
 
     createAssignment: (userId, stationId) =>
       request('/admin/assignments', { method: 'POST', body: JSON.stringify({ user_id: userId, station_id: stationId }) }),

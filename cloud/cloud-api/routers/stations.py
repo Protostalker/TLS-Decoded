@@ -9,11 +9,13 @@ Stats logic mirrors api/routers/insights.py's `_compute_tank_stats` /
 station_id, and to loop over stations (not just tanks) for the T2 combined
 view — "same pattern one level up," as the design doc puts it.
 """
+import csv
+import io
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -21,8 +23,9 @@ from auth import assigned_station_ids, get_current_user, require_admin, require_
 from database import get_db
 from delivery import delivery_progress
 from models import (
-    CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, DeliveryStop,
-    FuelOrder, PendingPriceUpdate, PendingTankUpdate, Station, User,
+    CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, DeliveryRun,
+    DeliveryStop, DeliveryStopItem, FuelOrder, PendingPriceUpdate,
+    PendingTankUpdate, Station, Tanker, TankerLoad, User,
 )
 from schemas import (
     PredictionOut, PriceUpdateRequest, ReadingOut, StationDashboardOut, StationOut,
@@ -1078,3 +1081,59 @@ def station_stats_summary(station_id: int, user: User = Depends(get_current_user
         out["today_profit_dollars"] = _sum("today_profit_dollars")
         out["total_margin_7d"] = _sum("total_margin_7d")
     return out
+
+
+# ── Delivery report download (station side) ─────────────────────────────────
+#
+# A station owner gets notified when a delivery run reaches them (see
+# routers/fleet.py's create_run/arrive_stop_core, which fire a Notification
+# through the same _station_recipients/_fire_push helpers supplier.py's
+# fuel-ordered flow uses) and once that stop is delivered, the notification
+# links here so they can pull a CSV confirming what actually arrived.
+# Station-scoped the same way every other station endpoint is
+# (require_station_access) — no fleet-management access implied.
+
+@router.get("/stations/{station_id}/deliveries/{run_id}/report")
+def download_delivery_report(
+    station_id: int, run_id: int,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    require_station_access(station_id, db, user)
+
+    stop = (
+        db.query(DeliveryStop)
+        .filter(DeliveryStop.delivery_run_id == run_id, DeliveryStop.station_id == station_id)
+        .first()
+    )
+    if not stop:
+        raise HTTPException(status_code=404, detail="No delivery for this station on that run")
+    if stop.status != "delivered":
+        raise HTTPException(status_code=400, detail="This delivery hasn't been confirmed as delivered yet")
+
+    run = db.query(DeliveryRun).filter(DeliveryRun.id == run_id).first()
+    load = db.query(TankerLoad).filter(TankerLoad.id == run.tanker_load_id).first() if run else None
+    tanker = db.query(Tanker).filter(Tanker.id == load.tanker_id).first() if load else None
+    station = db.query(Station).filter(Station.id == station_id).first()
+    items = db.query(DeliveryStopItem).filter(DeliveryStopItem.delivery_stop_id == stop.id).all()
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Station", "Delivery Run", "Tanker", "Arrived At", "Product", "Gallons Planned", "Gallons Delivered", "Variance"])
+    for it in items:
+        delivered = it.gallons_delivered if it.gallons_delivered is not None else it.gallons_planned
+        w.writerow([
+            station.name if station else "?",
+            run_id,
+            tanker.label if tanker else "?",
+            stop.arrived_at.isoformat() if stop.arrived_at else "",
+            it.product,
+            f"{it.gallons_planned:.1f}",
+            f"{delivered:.1f}",
+            f"{delivered - it.gallons_planned:.1f}",
+        ])
+
+    filename = f"delivery-report-run{run_id}-station{station_id}.csv"
+    return Response(
+        content=buf.getvalue(), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

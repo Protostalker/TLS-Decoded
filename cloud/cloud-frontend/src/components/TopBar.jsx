@@ -11,7 +11,7 @@ import ThemeSelector from './ThemeSelector.jsx'
 // caller (T2 station list, Admin, Login) renders the default gradient badge
 // since --brand-* CSS vars are unset there. See brandTheme.js for scoping.
 export default function TopBar({ title, backTo, logoDataUrl }) {
-  const { user, logout } = useAuth()
+  const { user, logout, impersonating, returnToAdmin } = useAuth()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -22,8 +22,28 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
     navigate('/login')
   }
 
+  const exitImpersonation = async () => {
+    await returnToAdmin()
+    navigate('/admin')
+  }
+
   return (
     <>
+    {impersonating && (
+      <div style={{
+        background: '#78350f', color: '#fde68a', fontSize: 12, fontWeight: 600,
+        padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+      }}>
+        <span>👤 Viewing as {user?.email} — changes you make are really theirs.</span>
+        <button
+          onClick={exitImpersonation}
+          style={{
+            background: '#fde68a', border: 'none', borderRadius: 6, padding: '2px 10px',
+            color: '#78350f', fontWeight: 700, fontSize: 11, cursor: 'pointer',
+          }}
+        >Return to admin</button>
+      </div>
+    )}
     <header style={{
       background: 'var(--brand-surface-2, #161b27)', borderBottom: '1px solid var(--brand-border-soft, #1e2130)',
       padding: '0 16px', height: 60,

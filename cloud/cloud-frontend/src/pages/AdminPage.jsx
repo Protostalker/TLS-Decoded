@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client.js'
+import { useAuth } from '../context/AuthContext.jsx'
 import TopBar from '../components/TopBar.jsx'
 import StalenessBadge from '../components/StalenessBadge.jsx'
 import Footer from '../components/Footer.jsx'
@@ -578,9 +580,28 @@ function SetPasswordForm({ userId }) {
   )
 }
 
+function homeFor(role) {
+  if (role === 'driver') return '/driver'
+  if (role === 'supplier') return '/supplier'
+  if (role === 'admin') return '/admin'
+  return '/'
+}
+
 function UserDetail({ user, stations, onChange }) {
   const [sessions, setSessions] = useState(null)
   const [pickStation, setPickStation] = useState('')
+  const [impersonateError, setImpersonateError] = useState(null)
+  const { impersonate } = useAuth()
+  const navigate = useNavigate()
+
+  const logInAs = async () => {
+    if (!window.confirm(`Log in as ${user.email}? You'll see and act as them until you return to admin.`)) return
+    setImpersonateError(null)
+    try {
+      const target = await impersonate(user.id)
+      navigate(homeFor(target.role))
+    } catch (e) { setImpersonateError(e.message) }
+  }
 
   const loadSessions = () => { api.admin.userSessions(user.id).then(setSessions).catch(() => {}) }
   useEffect(loadSessions, [user.id])
@@ -605,6 +626,14 @@ function UserDetail({ user, stations, onChange }) {
 
   return (
     <div style={{ background: 'var(--brand-bg, #0f1117)', padding: 18 }}>
+      {user.role !== 'admin' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          {impersonateError && <span style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 12 }}>{impersonateError}</span>}
+          <button onClick={logInAs} style={btn} title="View and act as this user until you return to admin">
+            👤 Log in as this user
+          </button>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, marginBottom: 0 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 10 }}>Station assignments</div>
