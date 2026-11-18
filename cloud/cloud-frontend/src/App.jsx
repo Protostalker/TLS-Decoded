@@ -8,6 +8,7 @@ import StationDashboardPage from './pages/StationDashboardPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import SupplierDashboard from './pages/SupplierDashboard.jsx'
 import MapPage from './pages/MapPage.jsx'
+import FleetPage from './pages/FleetPage.jsx'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/stations/:id" element={<ProtectedRoute><StationDashboardPage /></ProtectedRoute>} />
         <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
         <Route path="/supplier" element={<SupplierRoute><SupplierDashboard /></SupplierRoute>} />
+        <Route path="/fleet" element={<SupplierRoute><FleetPage /></SupplierRoute>} />
       </Routes>
     </AuthProvider>
   )

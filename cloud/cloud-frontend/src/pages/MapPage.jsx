@@ -14,6 +14,10 @@ const truckIcon = L.divIcon({
   html: '<div style="font-size:18px;line-height:1;transform:translate(-2px,-2px)">🚚</div>',
   className: '', iconSize: [22, 22], iconAnchor: [11, 11],
 })
+const rackIcon = L.divIcon({
+  html: '<div style="font-size:18px;line-height:1;transform:translate(-2px,-2px)">🛢️</div>',
+  className: '', iconSize: [22, 22], iconAnchor: [11, 11],
+})
 
 // Poll cadence for the map — delivery progress bars need to actually move;
 // station urgency/sync data is cheap to refetch at the same cadence.
@@ -53,7 +57,9 @@ function fmtRelative(iso) {
 export default function MapPage() {
   const { user } = useAuth()
   const [stations, setStations] = useState(null)
+  const [racks, setRacks] = useState(null)
   const [error, setError] = useState(null)
+  const canSeeRacks = user?.role === 'supplier' || user?.role === 'admin'
 
   useEffect(() => {
     const load = () => api.stationsMap().then(setStations).catch(e => setError(e.message))
@@ -62,14 +68,26 @@ export default function MapPage() {
     return () => clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    if (!canSeeRacks) return
+    // Racks don't move and don't need the 30s poll cadence stations use —
+    // a one-time fetch per page load is plenty.
+    api.fleet.racks().then(setRacks).catch(() => setRacks([]))
+  }, [canSeeRacks])
+
   const homeTo = user?.role === 'admin' ? undefined : (user?.role === 'supplier' ? '/supplier' : '/')
 
+  const pinnedStations = stations || []
+  const pinnedRacks = (racks || []).filter(r => r.lat != null && r.lng != null)
+  const hasAnyPins = pinnedStations.length > 0 || pinnedRacks.length > 0
+
   const center = useMemo(() => {
-    if (!stations || stations.length === 0) return DEFAULT_CENTER
-    const lat = stations.reduce((sum, s) => sum + s.lat, 0) / stations.length
-    const lng = stations.reduce((sum, s) => sum + s.lng, 0) / stations.length
+    const points = [...pinnedStations, ...pinnedRacks]
+    if (points.length === 0) return DEFAULT_CENTER
+    const lat = points.reduce((sum, p) => sum + p.lat, 0) / points.length
+    const lng = points.reduce((sum, p) => sum + p.lng, 0) / points.length
     return [lat, lng]
-  }, [stations])
+  }, [pinnedStations, pinnedRacks])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--brand-bg, #0f1117)' }}>
@@ -83,18 +101,18 @@ export default function MapPage() {
           <div style={{ color: 'var(--brand-text-dimmer, #64748b)', padding: 40, textAlign: 'center' }}>Loading…</div>
         )}
 
-        {stations && stations.length === 0 && !error && (
+        {stations && !hasAnyPins && !error && (
           <div style={{ ...card, textAlign: 'center', color: 'var(--brand-text-dimmer, #64748b)' }}>
             No stations have a map pin yet.{user?.role === 'admin' ? ' Set one from the Admin page.' : ' Ask an admin to set one.'}
           </div>
         )}
 
-        {stations && stations.length > 0 && (
+        {stations && hasAnyPins && (
           <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
             <div style={{ height: 560, position: 'relative' }}>
               <MapContainer
                 center={center}
-                zoom={stations.length === 1 ? 12 : DEFAULT_ZOOM}
+                zoom={(pinnedStations.length + pinnedRacks.length) === 1 ? 12 : DEFAULT_ZOOM}
                 style={{ height: '100%', width: '100%' }}
                 scrollWheelZoom
               >
@@ -151,6 +169,17 @@ export default function MapPage() {
                     </Popup>
                   </Marker>
                 ))}
+                {pinnedRacks.map(r => (
+                  <Marker key={`rack-${r.id}`} position={[r.lat, r.lng]} icon={rackIcon}>
+                    <Popup>
+                      <div style={{ minWidth: 140 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{r.name}</div>
+                        <div style={{ fontSize: 11, color: '#777' }}>Loading rack</div>
+                        {r.address && <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>{r.address}</div>}
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
               </MapContainer>
 
               <div style={{
@@ -164,6 +193,7 @@ export default function MapPage() {
                 <Legend color="#22c55e" label="comfortable" />
                 <Legend color="#64748b" label="no data" />
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🚚 delivery in transit</span>
+                {canSeeRacks && <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🛢️ loading rack</span>}
               </div>
             </div>
           </div>

@@ -253,6 +253,158 @@ class SetPasswordRequest(BaseModel):
     password: str
 
 
+#  ── Fleet: loading racks, tankers, daisy-chain delivery runs (Phase 3) ──────
+
+class LoadingRackCreate(BaseModel):
+    name: str
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class LoadingRackUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    active: Optional[bool] = None
+
+
+class LoadingRackOut(BaseModel):
+    id: int
+    name: str
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    active: bool
+
+
+class TankerCompartmentIn(BaseModel):
+    label: str
+    capacity_gallons: float
+
+
+class TankerCompartmentOut(BaseModel):
+    id: int
+    label: str
+    capacity_gallons: float
+    display_order: Optional[int] = None
+
+
+class TankerCreate(BaseModel):
+    label: str
+    compartments: list[TankerCompartmentIn] = []
+
+
+class TankerOut(BaseModel):
+    id: int
+    label: str
+    active: bool
+    compartments: list[TankerCompartmentOut] = []
+
+
+class TankerLoadItemIn(BaseModel):
+    """
+    One product/gallons line for one compartment. The %-split + "max"
+    button UI (see cloud-frontend's LoadBuilder) resolves everything down
+    to a final gallons number client-side before this ever reaches the
+    server — the server's only job is to check each compartment's lines
+    sum to (approximately) its capacity, not to re-derive percentages.
+    """
+    tanker_compartment_id: int
+    product: str
+    gallons: float
+
+
+class TankerLoadCreate(BaseModel):
+    tanker_id: int
+    loading_rack_id: int
+    loaded_at: Optional[datetime] = None  # defaults to now
+    note: Optional[str] = None
+    items: list[TankerLoadItemIn]
+
+
+class TankerLoadItemOut(BaseModel):
+    id: int
+    tanker_compartment_id: int
+    compartment_label: str
+    product: str
+    gallons: float
+    gallons_remaining: float
+
+
+class TankerLoadOut(BaseModel):
+    id: int
+    tanker_id: int
+    tanker_label: str
+    loading_rack_id: int
+    loading_rack_name: str
+    loaded_at: datetime
+    note: Optional[str] = None
+    items: list[TankerLoadItemOut] = []
+
+
+class DeliveryStopItemIn(BaseModel):
+    tanker_load_item_id: int
+    gallons: float
+
+
+class DeliveryStopIn(BaseModel):
+    station_id: int
+    items: list[DeliveryStopItemIn]
+
+
+class DeliveryRunCreate(BaseModel):
+    tanker_load_id: int
+    stops: list[DeliveryStopIn]
+
+
+class DeliveryStopItemOut(BaseModel):
+    id: int
+    product: str
+    gallons_planned: float
+    gallons_delivered: Optional[float] = None
+
+
+class DeliveryStopOut(BaseModel):
+    id: int
+    station_id: int
+    station_name: str
+    stop_order: int
+    status: str
+    started_at: Optional[datetime] = None
+    eta_minutes: Optional[float] = None
+    distance_km: Optional[float] = None
+    arrived_at: Optional[datetime] = None
+    items: list[DeliveryStopItemOut] = []
+    # Elapsed-vs-estimate progress for THIS leg, same shape delivery.py
+    # produces for the simpler single-stop FuelOrder timer — None until the
+    # leg has actually started (started_at set).
+    delivery: Optional[dict] = None
+
+
+class DeliveryRunOut(BaseModel):
+    id: int
+    tanker_load_id: int
+    status: str
+    created_at: datetime
+    dispatched_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    stops: list[DeliveryStopOut] = []
+
+
+class ArriveStopItemOverride(BaseModel):
+    delivery_stop_item_id: int
+    gallons_delivered: float
+
+
+class ArriveStopRequest(BaseModel):
+    """Mark a stop delivered. Omitting items/overrides just records the
+    planned gallons as delivered for every item at this stop — the common
+    case where the drop went exactly as planned."""
+    items: list[ArriveStopItemOverride] = []
+
+
 class FuelOrderRequest(BaseModel):
     """
     Supplier marks fuel as ordered for a station; ETA note is free-text,

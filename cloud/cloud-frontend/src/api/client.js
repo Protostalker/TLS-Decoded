@@ -92,6 +92,25 @@ export const api = {
       request(`/supplier/stations/${stationId}/order`, { method: 'POST', body: JSON.stringify(body) }),
   },
 
+  // ── Fleet: loading racks, tankers, loads, daisy-chain delivery runs ──
+  fleet: {
+    racks: () => request('/fleet/racks'),
+    createRack: (body) => request('/fleet/racks', { method: 'POST', body: JSON.stringify(body) }),
+    updateRack: (id, body) => request(`/fleet/racks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+    tankers: () => request('/fleet/tankers'),
+    createTanker: (body) => request('/fleet/tankers', { method: 'POST', body: JSON.stringify(body) }),
+    addCompartment: (tankerId, body) => request(`/fleet/tankers/${tankerId}/compartments`, { method: 'POST', body: JSON.stringify(body) }),
+
+    loads: (openOnly = true) => request(`/fleet/loads?open_only=${openOnly}`),
+    createLoad: (body) => request('/fleet/loads', { method: 'POST', body: JSON.stringify(body) }),
+
+    runs: (activeOnly = true) => request(`/fleet/runs?active_only=${activeOnly}`),
+    createRun: (body) => request('/fleet/runs', { method: 'POST', body: JSON.stringify(body) }),
+    arriveStop: (runId, stopId, body = { items: [] }) =>
+      request(`/fleet/runs/${runId}/stops/${stopId}/arrive`, { method: 'POST', body: JSON.stringify(body) }),
+  },
+
   // ── Notifications ──
   notifications: () => request('/notifications'),
   markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),

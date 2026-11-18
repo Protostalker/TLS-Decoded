@@ -16,7 +16,7 @@ import licensing
 from auth import hash_secret
 from database import Base, engine, get_db
 from models import Customer, FuelOrder, Notification, PushSubscription, User
-from routers import admin, auth_router, ingest, license as license_router, notifications, push, stations, supplier
+from routers import admin, auth_router, fleet, ingest, license as license_router, notifications, push, stations, supplier
 
 logger = logging.getLogger("cloud-api.main")
 
@@ -99,6 +99,93 @@ def _migrate_schema() -> None:
         conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ"))
         conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS eta_minutes DOUBLE PRECISION"))
         conn.execute(text("ALTER TABLE fuel_orders ADD COLUMN IF NOT EXISTS route_distance_km DOUBLE PRECISION"))
+
+        # Fleet: loading racks, tankers, daisy-chain delivery runs (Phase 3).
+        # create_all handles these for a fresh DB; explicit DDL here covers
+        # an existing DB from before these models existed, same pattern as
+        # the supplier workflow tables above.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS loading_racks (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id),
+                name TEXT NOT NULL,
+                address TEXT, lat DOUBLE PRECISION, lng DOUBLE PRECISION,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tankers (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER REFERENCES customers(id),
+                label TEXT NOT NULL,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tanker_compartments (
+                id SERIAL PRIMARY KEY,
+                tanker_id INTEGER NOT NULL REFERENCES tankers(id),
+                label TEXT NOT NULL,
+                capacity_gallons DOUBLE PRECISION NOT NULL,
+                display_order INTEGER
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tanker_loads (
+                id BIGSERIAL PRIMARY KEY,
+                tanker_id INTEGER NOT NULL REFERENCES tankers(id),
+                loading_rack_id INTEGER NOT NULL REFERENCES loading_racks(id),
+                created_by_user_id INTEGER NOT NULL REFERENCES users(id),
+                loaded_at TIMESTAMPTZ NOT NULL,
+                note TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tanker_load_items (
+                id BIGSERIAL PRIMARY KEY,
+                tanker_load_id BIGINT NOT NULL REFERENCES tanker_loads(id),
+                tanker_compartment_id INTEGER NOT NULL REFERENCES tanker_compartments(id),
+                product TEXT NOT NULL,
+                gallons DOUBLE PRECISION NOT NULL,
+                gallons_remaining DOUBLE PRECISION NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS delivery_runs (
+                id BIGSERIAL PRIMARY KEY,
+                tanker_load_id BIGINT NOT NULL REFERENCES tanker_loads(id),
+                supplier_user_id INTEGER NOT NULL REFERENCES users(id),
+                status TEXT NOT NULL DEFAULT 'planned',
+                created_at TIMESTAMPTZ NOT NULL,
+                dispatched_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS delivery_stops (
+                id BIGSERIAL PRIMARY KEY,
+                delivery_run_id BIGINT NOT NULL REFERENCES delivery_runs(id),
+                station_id INTEGER NOT NULL REFERENCES stations(id),
+                stop_order INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                started_at TIMESTAMPTZ,
+                eta_minutes DOUBLE PRECISION,
+                distance_km DOUBLE PRECISION,
+                arrived_at TIMESTAMPTZ
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS delivery_stop_items (
+                id BIGSERIAL PRIMARY KEY,
+                delivery_stop_id BIGINT NOT NULL REFERENCES delivery_stops(id),
+                tanker_load_item_id BIGINT NOT NULL REFERENCES tanker_load_items(id),
+                product TEXT NOT NULL,
+                gallons_planned DOUBLE PRECISION NOT NULL,
+                gallons_delivered DOUBLE PRECISION
+            )
+        """))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id BIGSERIAL PRIMARY KEY,
@@ -214,6 +301,7 @@ app.include_router(auth_router.router, prefix="/api")     # /api/auth/* — T2 l
 app.include_router(stations.router, prefix="/api")        # /api/me/*, /api/stations/* — T1 + T2
 app.include_router(admin.router, prefix="/api")           # /api/admin/* — T3
 app.include_router(supplier.router, prefix="/api")        # /api/supplier/* — supplier dashboard
+app.include_router(fleet.router, prefix="/api")           # /api/fleet/* — racks/tankers/loads/delivery runs
 app.include_router(notifications.router, prefix="/api")   # /api/notifications/*
 app.include_router(push.router, prefix="/api")            # /api/push/*
 app.include_router(license_router.router, prefix="/api")  # /api/license/* — banner (any user), status/recheck (admin)

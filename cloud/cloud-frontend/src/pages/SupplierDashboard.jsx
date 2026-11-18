@@ -83,7 +83,10 @@ export default function SupplierDashboard() {
           <div style={{ fontSize: 12, color: 'var(--brand-text-dimmer, #64748b)' }}>
             Stations sorted by urgency — lowest fuel first
           </div>
-          <button onClick={load} style={ghostBtn}>⟳ Refresh</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link to="/fleet" style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🚛 Manage Fleet</Link>
+            <button onClick={load} style={ghostBtn}>⟳ Refresh</button>
+          </div>
         </div>
 
         {error && <ErrorBox message={error} />}

@@ -353,6 +353,159 @@ class FuelOrder(Base):
     route_distance_km: Mapped[float | None] = mapped_column(Float)
 
 
+# ── Fleet: loading racks, tankers, and daisy-chain delivery runs ───────────
+# (Phase 3 of the Fuel Provider feature list.)
+
+class LoadingRack(Base):
+    """
+    A place a tanker can load fuel from (a terminal/depot/rack) — the
+    origin end of a delivery. Owned by a customer (the fuel provider's own
+    company), same tenancy pattern as Station. Address/lat/lng mirror
+    Station's map-pin fields exactly (geocoded via geocoding.py), so a rack
+    shows up on the same map as its own marker.
+    """
+    __tablename__ = "loading_racks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id"))
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    address: Mapped[str | None] = mapped_column(Text)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lng: Mapped[float | None] = mapped_column(Float)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class Tanker(Base):
+    """
+    A physical delivery vehicle. Its compartments (TankerCompartment) are a
+    property of the TANKER — defined once and reused across many loads,
+    "per tank, not per delivery," per the original ask. What a compartment
+    is actually carrying on a given trip is recorded separately, per load
+    (TankerLoadItem), so the same 2x10k-gallon tanker can run all-diesel one
+    day and a diesel/unleaded split the next without redefining its
+    physical layout each time.
+    """
+    __tablename__ = "tankers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id"))
+    label: Mapped[str] = mapped_column(Text, nullable=False)  # e.g. "Tanker 7"
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class TankerCompartment(Base):
+    """One physical compartment on a tanker — fixed capacity, reused across loads."""
+    __tablename__ = "tanker_compartments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tanker_id: Mapped[int] = mapped_column(Integer, ForeignKey("tankers.id"), nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)  # e.g. "Tank 1"
+    capacity_gallons: Mapped[float] = mapped_column(Float, nullable=False)
+    display_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class TankerLoad(Base):
+    """
+    One loading event: this tanker picked up fuel at this rack. What each
+    compartment was actually loaded with (which product(s), how many
+    gallons) lives in TankerLoadItem, entered once here via the %/max UI
+    (routers/fleet.py), then drawn down across however many delivery stops
+    make up the daisy chain (DeliveryStopItem) — loading and delivering are
+    deliberately separate steps, matching how the feature was described.
+    """
+    __tablename__ = "tanker_loads"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tanker_id: Mapped[int] = mapped_column(Integer, ForeignKey("tankers.id"), nullable=False)
+    loading_rack_id: Mapped[int] = mapped_column(Integer, ForeignKey("loading_racks.id"), nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    loaded_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class TankerLoadItem(Base):
+    """
+    One product/gallons line within one compartment of one load — e.g.
+    "compartment 1: 3500 gal diesel". Multiple rows can share a compartment
+    (the %-split case, e.g. 35% diesel + 65% unleaded in the same
+    compartment) — see routers/fleet.py's create_load for the
+    percent-to-gallons math and the "max" button's semantics.
+    """
+    __tablename__ = "tanker_load_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tanker_load_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tanker_loads.id"), nullable=False)
+    tanker_compartment_id: Mapped[int] = mapped_column(Integer, ForeignKey("tanker_compartments.id"), nullable=False)
+    product: Mapped[str] = mapped_column(Text, nullable=False)
+    gallons: Mapped[float] = mapped_column(Float, nullable=False)
+    # How much of THIS line is still unallocated to any delivery stop —
+    # starts equal to gallons, decremented as DeliveryStopItems are created
+    # against it. Denormalized (not SUM-recomputed on every read) so a
+    # partially-allocated load's remaining capacity is a cheap read on the
+    # fleet dashboard; kept in lockstep inside the same transaction that
+    # creates a DeliveryStopItem — see routers/fleet.py.
+    gallons_remaining: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class DeliveryRun(Base):
+    """
+    A daisy-chain delivery: one TankerLoad, dropped off across one or more
+    stations in sequence (DeliveryStop, ordered by stop_order). status
+    moves planned -> dispatched -> completed (or cancelled). dispatched_at
+    is when the truck left the loading rack — the clock start for stop 1's
+    leg timer (see delivery.py; later stops start their own leg timer when
+    the stop before them is marked arrived).
+    """
+    __tablename__ = "delivery_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tanker_load_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tanker_loads.id"), nullable=False)
+    supplier_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="planned")  # planned|dispatched|completed|cancelled
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    dispatched_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class DeliveryStop(Base):
+    """
+    One stop in a DeliveryRun's daisy chain. started_at/eta_minutes/
+    distance_km describe THIS LEG ONLY (previous stop, or the rack for
+    stop_order 0, -> this station) — see routing.route() for how they're
+    computed and delivery.py for how they turn into a progress bar.
+    started_at is set when the truck leaves the previous point (the run's
+    dispatch, for the first stop; the prior stop's arrived_at, for every
+    stop after that) — never inherited from the run's own dispatched_at
+    past stop 0, so each later leg gets its own fresh timer.
+    """
+    __tablename__ = "delivery_stops"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    delivery_run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("delivery_runs.id"), nullable=False)
+    station_id: Mapped[int] = mapped_column(Integer, ForeignKey("stations.id"), nullable=False)
+    stop_order: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-based position in the chain
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")  # pending|in_transit|delivered
+    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    eta_minutes: Mapped[float | None] = mapped_column(Float)
+    distance_km: Mapped[float | None] = mapped_column(Float)
+    arrived_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class DeliveryStopItem(Base):
+    """One product/gallons line being dropped at one stop, drawn from the
+    run's TankerLoad (see TankerLoadItem.gallons_remaining)."""
+    __tablename__ = "delivery_stop_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    delivery_stop_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("delivery_stops.id"), nullable=False)
+    tanker_load_item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tanker_load_items.id"), nullable=False)
+    product: Mapped[str] = mapped_column(Text, nullable=False)
+    gallons_planned: Mapped[float] = mapped_column(Float, nullable=False)
+    gallons_delivered: Mapped[float | None] = mapped_column(Float)
+
+
 class Notification(Base):
     """
     In-app notification for admin/user-role recipients. Currently only type

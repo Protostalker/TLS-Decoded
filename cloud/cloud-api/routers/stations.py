@@ -21,7 +21,7 @@ from auth import assigned_station_ids, get_current_user, require_admin, require_
 from database import get_db
 from delivery import delivery_progress
 from models import (
-    CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank,
+    CloudDeliveryEvent, CloudFuelPrice, CloudReading, CloudTank, DeliveryStop,
     FuelOrder, PendingPriceUpdate, PendingTankUpdate, Station, User,
 )
 from schemas import (
@@ -98,23 +98,36 @@ def stations_map(user: User = Depends(get_current_user), db: Session = Depends(g
                 pct = reading.volume_gallons / tank.capacity_gallons
                 if min_pct is None or pct < min_pct:
                     min_pct = pct
-        # Active (non-expired snooze) delivery, if any — same notion of
-        # "active" as supplier.py's _active_snooze, duplicated rather than
-        # cross-imported (routers don't import each other in this codebase;
-        # see models.FuelOrder for the fields). None unless the supplier who
-        # marked it ordered also gave a pickup address that geocoded/routed.
-        active_order = (
-            db.query(FuelOrder)
-            .filter(FuelOrder.station_id == s.id, FuelOrder.snoozed_until > datetime.now(tz=timezone.utc))
-            .order_by(FuelOrder.ordered_at.desc())
+        # Delivery in transit, if any. Two independent sources, checked in
+        # order — a daisy-chain DeliveryStop (Phase 3's fleet system) wins
+        # over the older single-station FuelOrder timer (Phase 2) if a
+        # station somehow has both active at once, since the fleet system
+        # is the richer/newer path. Both reduce to the same delivery.py
+        # shape, so the frontend doesn't need to know which one it got.
+        active_stop = (
+            db.query(DeliveryStop)
+            .filter(DeliveryStop.station_id == s.id, DeliveryStop.status == "in_transit")
+            .order_by(DeliveryStop.started_at.desc())
             .first()
         )
+        delivery = delivery_progress(active_stop) if active_stop else None
+        if delivery is None:
+            # Same notion of "active" as supplier.py's _active_snooze,
+            # duplicated rather than cross-imported (routers don't import
+            # each other in this codebase; see models.FuelOrder).
+            active_order = (
+                db.query(FuelOrder)
+                .filter(FuelOrder.station_id == s.id, FuelOrder.snoozed_until > datetime.now(tz=timezone.utc))
+                .order_by(FuelOrder.ordered_at.desc())
+                .first()
+            )
+            delivery = delivery_progress(active_order)
 
         out.append({
             "id": s.id, "name": s.name, "lat": s.lat, "lng": s.lng, "address": s.address,
             "last_sync_at": s.last_sync_at,
             "urgency_pct": round(min_pct, 4) if min_pct is not None else None,
-            "delivery": delivery_progress(active_order),
+            "delivery": delivery,
         })
     return out
 

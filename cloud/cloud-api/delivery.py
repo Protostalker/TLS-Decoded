@@ -20,22 +20,33 @@ from typing import Optional
 
 def delivery_progress(order) -> Optional[dict]:
     """
-    `order` is a FuelOrder row (or anything with the same dispatched_at/
-    eta_minutes/origin_label/route_distance_km attributes). Returns None if
-    this order never got a route estimate (no pickup address given, or
-    geocoding/routing failed at order time) — callers fall back to just the
-    free-text eta_note in that case, same as before this feature existed.
+    `order` is either a FuelOrder row (dispatched_at/origin_label) or a
+    DeliveryStop row (started_at, no origin_label — the leg's "origin" is
+    implicit: the rack or the previous stop) — both carry eta_minutes/
+    route_distance_km(or distance_km) with the same meaning, so this reads
+    whichever start-time/label attributes are actually present rather than
+    assuming one shape. Returns None if this order/stop never got a route
+    estimate (no pickup address given, routing failed, or the leg hasn't
+    started yet) — callers fall back to the free-text eta_note (FuelOrder)
+    or a plain "pending" state (DeliveryStop) in that case.
     """
-    if order is None or not order.dispatched_at or not order.eta_minutes:
+    if order is None:
         return None
+    started_at = getattr(order, "dispatched_at", None) or getattr(order, "started_at", None)
+    eta_minutes = getattr(order, "eta_minutes", None)
+    if not started_at or not eta_minutes:
+        return None
+    distance_km = getattr(order, "route_distance_km", None)
+    if distance_km is None:
+        distance_km = getattr(order, "distance_km", None)
     now = datetime.now(tz=timezone.utc)
-    elapsed_min = (now - order.dispatched_at).total_seconds() / 60.0
-    progress = (elapsed_min / order.eta_minutes) if order.eta_minutes > 0 else 0.0
+    elapsed_min = (now - started_at).total_seconds() / 60.0
+    progress = (elapsed_min / eta_minutes) if eta_minutes > 0 else 0.0
     return {
-        "origin_label": order.origin_label,
-        "dispatched_at": order.dispatched_at.isoformat(),
-        "eta_minutes": order.eta_minutes,
-        "route_distance_km": order.route_distance_km,
+        "origin_label": getattr(order, "origin_label", None),
+        "dispatched_at": started_at.isoformat(),
+        "eta_minutes": eta_minutes,
+        "route_distance_km": distance_km,
         "progress_pct": round(min(max(progress, 0.0), 1.15), 4),
         "running_late": progress > 1.0,
     }
