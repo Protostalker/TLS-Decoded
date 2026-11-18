@@ -33,6 +33,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_not_degraded, require_station_access
@@ -588,6 +589,17 @@ def arrive_stop(
 # active-only listing).
 
 def _cascade_delete_run(db: Session, run: DeliveryRun, restore_gallons: bool) -> None:
+    """
+    Deletes a run bottom-up: stop items, then stops, then the run itself,
+    with a db.flush() between each stage. The flushes matter — these
+    models use plain FK columns with no ORM relationship()/cascade
+    declared between them, so SQLAlchemy's unit-of-work has no way to know
+    "stop items must physically DELETE before their stop" and won't
+    reliably order cross-table deletes within a single flush. Without the
+    flushes, Postgres (and SQLite with PRAGMA foreign_keys=ON) rejects the
+    batch with a FOREIGN KEY violation the instant it picks the wrong
+    order — which is exactly the 500 this was causing live.
+    """
     stops = db.query(DeliveryStop).filter(DeliveryStop.delivery_run_id == run.id).all()
     if stops:
         stop_ids = [s.id for s in stops]
@@ -603,17 +615,38 @@ def _cascade_delete_run(db: Session, run: DeliveryRun, restore_gallons: bool) ->
                     li.gallons_remaining += i.gallons_planned
         for i in items:
             db.delete(i)
+        db.flush()  # delivery_stop_items gone before we touch delivery_stops
         for s in stops:
             db.delete(s)
+        db.flush()  # delivery_stops gone before we touch delivery_runs
     db.delete(run)
+    db.flush()  # delivery_runs row gone before the caller touches tanker_loads
 
 
 def _cascade_delete_load(db: Session, load: TankerLoad) -> None:
+    """Same bottom-up-with-flush pattern as _cascade_delete_run above, and
+    for the same reason: tanker_load_items must be physically gone before
+    the tanker_loads row (or its tanker/compartments) can go."""
     for run in db.query(DeliveryRun).filter(DeliveryRun.tanker_load_id == load.id).all():
         _cascade_delete_run(db, run, restore_gallons=False)  # load itself is going away too
     for item in db.query(TankerLoadItem).filter(TankerLoadItem.tanker_load_id == load.id).all():
         db.delete(item)
+    db.flush()  # tanker_load_items gone before we touch tanker_loads
     db.delete(load)
+    db.flush()  # tanker_loads row gone before the caller touches tankers/racks
+
+
+def _commit_or_explain(db: Session) -> None:
+    """A bare 500 tells nobody anything — if the cascade missed some FK
+    (or the DB has rows from before this cascade logic existed, in an
+    order we didn't anticipate), roll back and surface the real database
+    error as a 400 instead, so it shows up directly in the UI instead of
+    needing server logs to diagnose."""
+    try:
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Couldn't delete — {e.__class__.__name__}: {getattr(e, 'orig', e)}")
 
 
 @router.delete("/fleet/runs/{run_id}", status_code=204)
@@ -622,7 +655,7 @@ def delete_run(run_id: int, user: User = Depends(_require_supplier), db: Session
     had drawn from its load (which keeps existing — only the run goes)."""
     run = _get_run_scoped(run_id, user, db)
     _cascade_delete_run(db, run, restore_gallons=True)
-    db.commit()
+    _commit_or_explain(db)
 
 
 @router.delete("/fleet/loads/{load_id}", status_code=204)
@@ -631,7 +664,7 @@ def delete_load(load_id: int, user: User = Depends(_require_supplier), db: Sessi
     their stops) — the tanker and rack it used are untouched."""
     load = _get_load_scoped(load_id, user, db)
     _cascade_delete_load(db, load)
-    db.commit()
+    _commit_or_explain(db)
 
 
 @router.delete("/fleet/tankers/{tanker_id}", status_code=204)
@@ -644,8 +677,9 @@ def delete_tanker(tanker_id: int, user: User = Depends(_require_supplier), db: S
         _cascade_delete_load(db, load)
     for comp in db.query(TankerCompartment).filter(TankerCompartment.tanker_id == tanker.id).all():
         db.delete(comp)
+    db.flush()  # tanker_compartments gone before we touch the tankers row
     db.delete(tanker)
-    db.commit()
+    _commit_or_explain(db)
 
 
 @router.delete("/fleet/racks/{rack_id}", status_code=204)
@@ -654,8 +688,9 @@ def delete_rack(rack_id: int, user: User = Depends(_require_supplier), db: Sessi
     rack = _get_rack_scoped(rack_id, user, db)
     for load in db.query(TankerLoad).filter(TankerLoad.loading_rack_id == rack.id).all():
         _cascade_delete_load(db, load)
+    db.flush()  # tanker_loads referencing this rack are gone before we touch the rack row
     db.delete(rack)
-    db.commit()
+    _commit_or_explain(db)
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────
