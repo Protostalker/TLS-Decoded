@@ -7,27 +7,30 @@ shown exactly once), create/manage users, assign users to stations, rotate
 station credentials, and view/revoke any user's sessions.
 """
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from auth import gen_device_id, gen_device_secret, hash_secret, require_admin
+from auth import create_magic_link, gen_device_id, gen_device_secret, hash_secret, require_admin
 from database import get_db
 from geocoding import geocode_address
 from models import Customer, Station, User, UserSession, UserStationAssignment
 from schemas import (
     AssignmentCreate, CustomerCreate, CustomerOut, GeocodeRequest, GeocodeResponse,
-    SessionOut, SetPasswordRequest,
+    MagicLinkOut, SessionOut, SetPasswordRequest,
     StationCreate, StationCredentialOut, StationOut, StationUpdate,
     UserCreate, UserOut, UserUpdate,
 )
 
-# All three roles recognised by the system.  Keep in sync with the comment on
-# models.User.role and the frontend's role selector.
-VALID_ROLES = ("admin", "user", "supplier")
+# All roles recognised by the system.  Keep in sync with the comment on
+# models.User.role and the frontend's role selector. "driver" (added in the
+# Driver-account phase) logs in with a password or a magic link
+# (generate_magic_link below) and only ever sees /driver/* endpoints —
+# nothing here grants it any additional access, it's just a valid value.
+VALID_ROLES = ("admin", "user", "supplier", "driver")
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -223,7 +226,7 @@ def create_user(body: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email.lower()).first():
         raise HTTPException(status_code=409, detail="Email already registered")
     if body.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail="role must be 'admin', 'user', or 'supplier'")
+        raise HTTPException(status_code=400, detail="role must be 'admin', 'user', 'supplier', or 'driver'")
     u = User(
         email=body.email.lower(), password_hash=hash_password(body.password), role=body.role,
         customer_id=body.customer_id, active=True, created_at=datetime.now(tz=timezone.utc),
@@ -242,7 +245,7 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     if body.role is not None:
         if body.role not in VALID_ROLES:
-            raise HTTPException(status_code=400, detail="role must be 'admin', 'user', or 'supplier'")
+            raise HTTPException(status_code=400, detail="role must be 'admin', 'user', 'supplier', or 'driver'")
         u.role = body.role
     if body.active is not None:
         u.active = body.active
@@ -272,6 +275,24 @@ def set_user_password(user_id: int, body: SetPasswordRequest, db: Session = Depe
     db.commit()
     db.refresh(u)
     return _user_out(db, u)
+
+
+@router.post("/admin/users/{user_id}/magic-link", response_model=MagicLinkOut)
+def generate_magic_link(user_id: int, db: Session = Depends(get_db)):
+    """
+    One-click passwordless login link for this user — most useful for a
+    driver who'd rather not manage a password. No SMTP yet: this just
+    hands back the token/path for an admin to copy and send however they
+    like (text, email, whatever). See auth.create_magic_link for the
+    expiry/single-use mechanics.
+    """
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    from auth import MAGIC_LINK_VALID_HOURS
+    token = create_magic_link(db, u)
+    expires_at = datetime.now(tz=timezone.utc) + timedelta(hours=MAGIC_LINK_VALID_HOURS)
+    return MagicLinkOut(token=token, path=f"/magic/{token}", expires_at=expires_at)
 
 
 # ── Assignments ───────────────────────────────────────────────────────────────

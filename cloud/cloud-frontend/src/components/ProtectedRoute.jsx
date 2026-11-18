@@ -25,6 +25,14 @@ export function SupplierRoute({ children }) {
   return children
 }
 
+export function DriverRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return <Centered>Loading…</Centered>
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'driver' && user.role !== 'admin') return <Navigate to="/" replace />
+  return children
+}
+
 function Centered({ children }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand-text-dimmer, #64748b)' }}>

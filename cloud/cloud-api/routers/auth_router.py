@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
-from auth import create_session, get_current_user, hash_token, verify_secret, _extract_token
+from auth import create_session, get_current_user, hash_token, redeem_magic_link, verify_secret, _extract_token
 from database import get_db
 from models import Customer, User, UserSession
-from schemas import LoginRequest, LoginResponse, MeOut, SessionOut
+from schemas import LoginRequest, LoginResponse, MagicLoginRequest, MeOut, SessionOut
 
 router = APIRouter()
 
@@ -43,6 +43,23 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     response.set_cookie(
         COOKIE_NAME, token, httponly=True, samesite="lax", max_age=max_age, path="/",
     )
+    return LoginResponse(token=token, user=_me_out(db, user))
+
+
+@router.post("/auth/magic-login", response_model=LoginResponse)
+def magic_login(body: MagicLoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Redeem a magic link (see routers/admin.py's generate_magic_link) —
+    single-use, then behaves exactly like a normal login from here on:
+    creates a real session, sets the same cookie. duration="90d" rather
+    than the short default, since the whole point is not re-authenticating
+    constantly on a driver's phone."""
+    user = redeem_magic_link(db, body.token)
+    token = create_session(
+        db, user, duration="90d",
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax", max_age=90 * 86400, path="/")
     return LoginResponse(token=token, user=_me_out(db, user))
 
 

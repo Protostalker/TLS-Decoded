@@ -204,6 +204,32 @@ class PendingTankUpdate(Base):
     applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+class MagicLink(Base):
+    """
+    A passwordless login link, generated on demand by an admin (or a
+    supplier, for their own drivers) and shared manually — text, email,
+    whatever — since SMTP sending isn't wired up yet. Redeeming one (POST
+    /api/auth/magic-login) creates a normal session exactly like a
+    password login would (see auth.py's create_session), so once a driver
+    taps the link they're logged in the regular way from then on; the link
+    itself is only consumed once (used_at set) and expires on its own
+    after a while even if never used.
+
+    One active (unused, unexpired) link per user is the intended usage —
+    generating a new one for the same user doesn't delete old rows, but
+    the admin UI only ever shows/links the most recent, so in practice an
+    old unused link is simply never shared and quietly expires.
+    """
+    __tablename__ = "magic_links"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
 class UserSession(Base):
     """DB-backed sessions (not JWT) — required because 'never expires' + admin
     revocation together rule out stateless tokens; see CLOUD-ARCHITECTURE.md."""
@@ -457,12 +483,17 @@ class DeliveryRun(Base):
     is when the truck left the loading rack — the clock start for stop 1's
     leg timer (see delivery.py; later stops start their own leg timer when
     the stop before them is marked arrived).
+
+    driver_user_id (added in the Driver-account phase) is optional — a run
+    created without one just doesn't show up on anyone's Driver dashboard;
+    the supplier/admin fleet views work exactly as before either way.
     """
     __tablename__ = "delivery_runs"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     tanker_load_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tanker_loads.id"), nullable=False)
     supplier_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    driver_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(Text, nullable=False, default="planned")  # planned|dispatched|completed|cancelled
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     dispatched_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))

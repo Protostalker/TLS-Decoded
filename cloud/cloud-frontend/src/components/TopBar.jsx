@@ -52,11 +52,13 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
           )}
           {user.role === 'supplier' ? (
             <Link to="/supplier" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Fuel Supply</Link>
+          ) : user.role === 'driver' ? (
+            <Link to="/driver" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>My Deliveries</Link>
           ) : (
             <Link to="/" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Stations</Link>
           )}
-          <Link to="/map" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Map</Link>
-          {user.role !== 'supplier' && <NotificationBell />}
+          {user.role !== 'driver' && <Link to="/map" style={{ color: 'var(--brand-link, #93c5fd)', textDecoration: 'none' }}>Map</Link>}
+          {user.role !== 'supplier' && user.role !== 'driver' && <NotificationBell />}
           <ThemeSelector />
           <span style={{ color: 'var(--brand-text-dimmer, #64748b)' }}>{user.email}</span>
           <button
@@ -98,10 +100,12 @@ export default function TopBar({ title, backTo, logoDataUrl }) {
               </div>
               {user.role === 'supplier' ? (
                 <MenuLink to="/supplier" onClick={() => setMenuOpen(false)}>Fuel Supply</MenuLink>
+              ) : user.role === 'driver' ? (
+                <MenuLink to="/driver" onClick={() => setMenuOpen(false)}>My Deliveries</MenuLink>
               ) : (
                 <MenuLink to="/" onClick={() => setMenuOpen(false)}>Stations</MenuLink>
               )}
-              <MenuLink to="/map" onClick={() => setMenuOpen(false)}>Map</MenuLink>
+              {user.role !== 'driver' && <MenuLink to="/map" onClick={() => setMenuOpen(false)}>Map</MenuLink>}
               {user.role === 'admin' && (
                 <MenuLink to="/admin" onClick={() => setMenuOpen(false)}>Admin</MenuLink>
               )}

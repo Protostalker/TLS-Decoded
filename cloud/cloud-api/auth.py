@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import CloudLicenseState, Station, UserSession, User
+from models import CloudLicenseState, MagicLink, Station, UserSession, User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -87,6 +87,48 @@ def create_session(
     db.add(sess)
     db.commit()
     return token
+
+
+# ── Magic links (passwordless login — no SMTP yet, shared manually) ─────────
+# Generated on demand (routers/admin.py), redeemed once at POST
+# /api/auth/magic-login. Redeeming one creates a normal session, same as a
+# password login — the link itself is just an alternate front door, not a
+# parallel session mechanism.
+
+MAGIC_LINK_VALID_HOURS = 24 * 7  # a week — long enough that "text it to the driver" isn't a race
+
+
+def create_magic_link(db: Session, user: User) -> str:
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(tz=timezone.utc)
+    db.add(MagicLink(
+        user_id=user.id,
+        token_hash=hash_token(token),
+        created_at=now,
+        expires_at=now + timedelta(hours=MAGIC_LINK_VALID_HOURS),
+    ))
+    db.commit()
+    return token
+
+
+def redeem_magic_link(db: Session, token: str) -> User:
+    link = db.query(MagicLink).filter(MagicLink.token_hash == hash_token(token)).first()
+    if not link:
+        raise HTTPException(status_code=401, detail="Invalid or already-used link")
+    if link.used_at is not None:
+        raise HTTPException(status_code=401, detail="This link has already been used — ask for a new one")
+    now = datetime.now(tz=timezone.utc)
+    expires_at = link.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= now:
+        raise HTTPException(status_code=401, detail="This link has expired — ask for a new one")
+    user = db.query(User).filter(User.id == link.user_id).first()
+    if not user or not user.active:
+        raise HTTPException(status_code=401, detail="User inactive")
+    link.used_at = now
+    db.commit()
+    return user
 
 
 def _extract_token(request: Request, authorization: Optional[str]) -> Optional[str]:

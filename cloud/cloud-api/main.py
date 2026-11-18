@@ -16,7 +16,7 @@ import licensing
 from auth import hash_secret
 from database import Base, engine, get_db
 from models import Customer, FuelOrder, Notification, PushSubscription, User
-from routers import admin, auth_router, fleet, ingest, license as license_router, notifications, push, stations, supplier
+from routers import admin, auth_router, driver, fleet, ingest, license as license_router, notifications, push, stations, supplier
 
 logger = logging.getLogger("cloud-api.main")
 
@@ -163,6 +163,18 @@ def _migrate_schema() -> None:
                 completed_at TIMESTAMPTZ
             )
         """))
+        # Driver account phase — see models.DeliveryRun/MagicLink.
+        conn.execute(text("ALTER TABLE delivery_runs ADD COLUMN IF NOT EXISTS driver_user_id INTEGER REFERENCES users(id)"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS magic_links (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMPTZ NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at TIMESTAMPTZ
+            )
+        """))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS delivery_stops (
                 id BIGSERIAL PRIMARY KEY,
@@ -302,6 +314,7 @@ app.include_router(stations.router, prefix="/api")        # /api/me/*, /api/stat
 app.include_router(admin.router, prefix="/api")           # /api/admin/* — T3
 app.include_router(supplier.router, prefix="/api")        # /api/supplier/* — supplier dashboard
 app.include_router(fleet.router, prefix="/api")           # /api/fleet/* — racks/tankers/loads/delivery runs
+app.include_router(driver.router, prefix="/api")          # /api/driver/* — a driver's own assigned runs
 app.include_router(notifications.router, prefix="/api")   # /api/notifications/*
 app.include_router(push.router, prefix="/api")            # /api/push/*
 app.include_router(license_router.router, prefix="/api")  # /api/license/* — banner (any user), status/recheck (admin)

@@ -115,6 +115,18 @@ class LoginResponse(BaseModel):
     user: "MeOut"
 
 
+class MagicLoginRequest(BaseModel):
+    token: str
+
+
+class MagicLinkOut(BaseModel):
+    """The raw token + a ready-to-share path. No SMTP yet — an admin copies
+    this and sends it however they like (text, email, carrier pigeon)."""
+    token: str
+    path: str
+    expires_at: datetime
+
+
 class MeOut(BaseModel):
     id: int
     email: str
@@ -357,6 +369,7 @@ class DeliveryStopIn(BaseModel):
 class DeliveryRunCreate(BaseModel):
     tanker_load_id: int
     stops: list[DeliveryStopIn]
+    driver_user_id: Optional[int] = None
 
 
 class DeliveryStopItemOut(BaseModel):
@@ -390,6 +403,8 @@ class DeliveryRunOut(BaseModel):
     created_at: datetime
     dispatched_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    driver_user_id: Optional[int] = None
+    driver_email: Optional[str] = None
     stops: list[DeliveryStopOut] = []
 
 

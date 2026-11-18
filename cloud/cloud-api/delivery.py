@@ -39,6 +39,12 @@ def delivery_progress(order) -> Optional[dict]:
     distance_km = getattr(order, "route_distance_km", None)
     if distance_km is None:
         distance_km = getattr(order, "distance_km", None)
+    # Defensive: SQLite (unlike Postgres' TIMESTAMP(timezone=True)) hands
+    # back naive datetimes on reload even when a tz-aware one was written,
+    # which breaks the subtraction below. Treat a naive value as UTC rather
+    # than let this raise.
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
     now = datetime.now(tz=timezone.utc)
     elapsed_min = (now - started_at).total_seconds() / 60.0
     progress = (elapsed_min / eta_minutes) if eta_minutes > 0 else 0.0

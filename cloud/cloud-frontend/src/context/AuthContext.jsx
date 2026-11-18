@@ -26,13 +26,19 @@ export function AuthProvider({ children }) {
     return res.user
   }
 
+  const loginWithMagicLink = async (token) => {
+    const res = await api.magicLogin(token)
+    setUser(res.user)
+    return res.user
+  }
+
   const logout = async () => {
     try { await api.logout() } catch { /* ignore */ }
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithMagicLink, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   )

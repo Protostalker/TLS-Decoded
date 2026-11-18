@@ -42,6 +42,11 @@ export const api = {
   logout: async () => {
     try { await request('/auth/logout', { method: 'POST' }) } finally { setToken(null) }
   },
+  magicLogin: async (token) => {
+    const result = await request('/auth/magic-login', { method: 'POST', body: JSON.stringify({ token }) })
+    setToken(result.token)
+    return result
+  },
   me: () => request('/auth/me'),
   mySessions: () => request('/auth/sessions'),
   revokeMySession: (id) => request(`/auth/sessions/${id}`, { method: 'DELETE' }),
@@ -109,6 +114,22 @@ export const api = {
     createRun: (body) => request('/fleet/runs', { method: 'POST', body: JSON.stringify(body) }),
     arriveStop: (runId, stopId, body = { items: [] }) =>
       request(`/fleet/runs/${runId}/stops/${stopId}/arrive`, { method: 'POST', body: JSON.stringify(body) }),
+
+    drivers: () => request('/fleet/drivers'),
+
+    reports: {
+      daily: (days = 7) => request(`/fleet/reports/daily?days=${days}`),
+      shipments: (days = 30) => request(`/fleet/reports/shipments?days=${days}`),
+    },
+  },
+
+  // ── Driver: a driver's own assigned runs ──
+  driver: {
+    runs: () => request('/driver/runs'),
+    run: (id) => request(`/driver/runs/${id}`),
+    arriveStop: (runId, stopId, body = { items: [] }) =>
+      request(`/driver/runs/${runId}/stops/${stopId}/arrive`, { method: 'POST', body: JSON.stringify(body) }),
+    todayReport: () => request('/driver/reports/today'),
   },
 
   // ── Notifications ──
@@ -152,6 +173,7 @@ export const api = {
     createUser: (body) => request('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
     updateUser: (id, body) => request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     setUserPassword: (userId, password) => request(`/admin/users/${userId}/set-password`, { method: 'POST', body: JSON.stringify({ password }) }),
+    generateMagicLink: (userId) => request(`/admin/users/${userId}/magic-link`, { method: 'POST' }),
 
     createAssignment: (userId, stationId) =>
       request('/admin/assignments', { method: 'POST', body: JSON.stringify({ user_id: userId, station_id: stationId }) }),

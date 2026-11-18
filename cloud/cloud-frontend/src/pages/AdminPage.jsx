@@ -472,6 +472,7 @@ function UsersTab() {
             <option value="user">user</option>
             <option value="admin">admin</option>
             <option value="supplier">supplier</option>
+            <option value="driver">driver</option>
           </select>
         </Field>
         <Field label="Customer">
@@ -648,6 +649,55 @@ function UserDetail({ user, stations, onChange }) {
       </div>
 
       <SetPasswordForm userId={user.id} />
+      <MagicLinkPanel userId={user.id} />
+    </div>
+  )
+}
+
+// No SMTP yet — generating a link just hands back the URL for an admin to
+// copy and send however they like (text, email, carrier pigeon). Most
+// useful for a driver who'd rather not manage a password, but works for
+// any role. See auth.py's create_magic_link for expiry/single-use rules.
+function MagicLinkPanel({ userId }) {
+  const [link, setLink] = useState(null)
+  const [generating, setGenerating] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState(null)
+
+  const generate = async () => {
+    setGenerating(true)
+    setError(null)
+    setCopied(false)
+    try {
+      const r = await api.admin.generateMagicLink(userId)
+      setLink(`${window.location.origin}${r.path}`)
+    } catch (e) { setError(e.message) }
+    finally { setGenerating(false) }
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true) } catch { /* clipboard permissions vary — link is still shown to copy by hand */ }
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-text-dim, #94a3b8)', marginBottom: 8 }}>
+        Magic link (passwordless login)
+      </div>
+      <button onClick={generate} disabled={generating} style={btnGhost}>
+        {generating ? 'Generating…' : link ? 'Generate a new link' : 'Generate magic link'}
+      </button>
+      {error && <div style={{ color: 'var(--brand-danger-text, #fca5a5)', fontSize: 11, marginTop: 6 }}>{error}</div>}
+      {link && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+          <code style={{
+            background: 'var(--brand-bg, #0f1117)', border: '1px solid var(--brand-border, #2d3348)', borderRadius: 6,
+            padding: '4px 8px', color: 'var(--brand-text, #e2e8f0)', fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all',
+          }}>{link}</code>
+          <button onClick={copy} style={btnGhost}>{copied ? 'Copied ✓' : 'Copy'}</button>
+          <span style={{ fontSize: 10, color: 'var(--brand-text-faint, #475569)' }}>Valid 7 days, single-use — send it via text or email yourself.</span>
+        </div>
+      )}
     </div>
   )
 }

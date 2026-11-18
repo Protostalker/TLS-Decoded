@@ -29,7 +29,7 @@ company) — same pattern Station uses, scoped by assigned_station_ids'
 sibling here (`_scope_customer_id`). Admins see everything; suppliers see
 only their own customer's fleet. Degraded-mode gating mirrors supplier.py.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -131,6 +131,18 @@ def _tanker_out(t: Tanker, compartments: list[TankerCompartment]) -> TankerOut:
             for c in sorted(compartments, key=lambda c: (c.display_order if c.display_order is not None else 999, c.id))
         ],
     )
+
+
+@router.get("/fleet/drivers")
+def list_drivers(user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """Active driver accounts this supplier can assign a run to — for the
+    delivery-run builder's driver picker. Scoped the same way everything
+    else in this router is (customer_id; admins see all)."""
+    q = db.query(User).filter(User.role == "driver", User.active == True)  # noqa: E712
+    cid = _scope_customer_id(user)
+    if cid is not None:
+        q = q.filter(User.customer_id == cid)
+    return [{"id": d.id, "email": d.email} for d in q.order_by(User.email).all()]
 
 
 @router.get("/fleet/tankers", response_model=list[TankerOut])
@@ -321,9 +333,14 @@ def _run_out(db: Session, run: DeliveryRun) -> DeliveryRunOut:
             items_by_stop.setdefault(i.delivery_stop_id, []).append(i)
         stations = db.query(Station).filter(Station.id.in_([s.station_id for s in stops])).all()
         station_names = {s.id: s.name for s in stations}
+    driver_email = None
+    if run.driver_user_id:
+        driver = db.query(User).filter(User.id == run.driver_user_id).first()
+        driver_email = driver.email if driver else None
     return DeliveryRunOut(
         id=run.id, tanker_load_id=run.tanker_load_id, status=run.status,
         created_at=run.created_at, dispatched_at=run.dispatched_at, completed_at=run.completed_at,
+        driver_user_id=run.driver_user_id, driver_email=driver_email,
         stops=[_stop_out(s, items_by_stop.get(s.id, []), station_names.get(s.station_id, "?")) for s in stops],
     )
 
@@ -401,8 +418,18 @@ def create_run(body: DeliveryRunCreate, user: User = Depends(_require_supplier),
     # stop0 -> stop1, stop1 -> stop2, ... each estimated once up front via
     # OSRM; only stop 0 actually starts ticking (started_at set) immediately,
     # since the truck can only be on one leg at a time.
+    driver_user_id = None
+    if body.driver_user_id is not None:
+        driver = db.query(User).filter(User.id == body.driver_user_id, User.role == "driver", User.active == True).first()  # noqa: E712
+        if not driver:
+            raise HTTPException(status_code=400, detail="driver_user_id doesn't match an active driver account")
+        driver_user_id = driver.id
+
     now = datetime.now(tz=timezone.utc)
-    run = DeliveryRun(tanker_load_id=load.id, supplier_user_id=user.id, status="dispatched", created_at=now, dispatched_at=now)
+    run = DeliveryRun(
+        tanker_load_id=load.id, supplier_user_id=user.id, driver_user_id=driver_user_id,
+        status="dispatched", created_at=now, dispatched_at=now,
+    )
     db.add(run)
     db.flush()
 
@@ -442,12 +469,12 @@ def create_run(body: DeliveryRunCreate, user: User = Depends(_require_supplier),
     return _run_out(db, run)
 
 
-@router.post("/fleet/runs/{run_id}/stops/{stop_id}/arrive", response_model=DeliveryRunOut)
-def arrive_stop(
-    run_id: int, stop_id: int, body: ArriveStopRequest,
-    user: User = Depends(_require_supplier), db: Session = Depends(get_db),
-):
-    run = _get_run_scoped(run_id, user, db)
+def arrive_stop_core(db: Session, run: DeliveryRun, stop_id: int, body: ArriveStopRequest) -> DeliveryRunOut:
+    """
+    Shared by both the supplier/admin endpoint below and the driver's own
+    (routers/driver.py) — the two differ only in WHO is allowed to call
+    this for a given run, not in what happens once they're let through.
+    """
     stop = db.query(DeliveryStop).filter(DeliveryStop.id == stop_id, DeliveryStop.delivery_run_id == run.id).first()
     if not stop:
         raise HTTPException(status_code=404, detail="Stop not found on this run")
@@ -478,3 +505,141 @@ def arrive_stop(
 
     db.commit()
     return _run_out(db, run)
+
+
+@router.post("/fleet/runs/{run_id}/stops/{stop_id}/arrive", response_model=DeliveryRunOut)
+def arrive_stop(
+    run_id: int, stop_id: int, body: ArriveStopRequest,
+    user: User = Depends(_require_supplier), db: Session = Depends(get_db),
+):
+    run = _get_run_scoped(run_id, user, db)
+    return arrive_stop_core(db, run, stop_id, body)
+
+
+# ── Reports ───────────────────────────────────────────────────────────────────
+# No response_model here on purpose — these are read-only aggregate views,
+# not resources with their own schema, so a plain dict keeps this from
+# fighting Pydantic every time a new summary field gets added.
+
+def _runs_query(db: Session, cid: Optional[int]):
+    q = db.query(DeliveryRun)
+    if cid is not None:
+        q = q.join(TankerLoad, TankerLoad.id == DeliveryRun.tanker_load_id).join(Tanker, Tanker.id == TankerLoad.tanker_id).filter(Tanker.customer_id == cid)
+    return q
+
+
+def _delivered_stops_query(db: Session, cid: Optional[int]):
+    q = db.query(DeliveryStop).join(DeliveryRun, DeliveryRun.id == DeliveryStop.delivery_run_id)
+    if cid is not None:
+        q = q.join(TankerLoad, TankerLoad.id == DeliveryRun.tanker_load_id).join(Tanker, Tanker.id == TankerLoad.tanker_id).filter(Tanker.customer_id == cid)
+    return q.filter(DeliveryStop.status == "delivered")
+
+
+@router.get("/fleet/reports/daily")
+def daily_report(days: int = 7, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """
+    Day-by-day totals for the last `days` UTC calendar days (today
+    included): gallons delivered by product, stops completed, runs
+    dispatched. Pricing/revenue is NOT computed — there's no reliable
+    per-gallon price source wired up yet, so every response carries an
+    explicit `pricing_note` instead of a silently-wrong number. The
+    frontend should render that as a clearly-labeled "coming later" stub.
+    """
+    days = max(1, min(days, 90))
+    cid = _scope_customer_id(user)
+    since = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days - 1)
+
+    stops = _delivered_stops_query(db, cid).filter(DeliveryStop.arrived_at >= since).all()
+    items_by_stop: dict[int, list] = {}
+    if stops:
+        items = db.query(DeliveryStopItem).filter(DeliveryStopItem.delivery_stop_id.in_([s.id for s in stops])).all()
+        for i in items:
+            items_by_stop.setdefault(i.delivery_stop_id, []).append(i)
+
+    buckets: dict[str, dict] = {}
+    for d in range(days):
+        day = (since + timedelta(days=d)).date().isoformat()
+        buckets[day] = {"date": day, "stops_completed": 0, "runs_dispatched": 0, "gallons_by_product": {}}
+
+    for s in stops:
+        day = s.arrived_at.date().isoformat()
+        bucket = buckets.get(day)
+        if not bucket:
+            continue
+        bucket["stops_completed"] += 1
+        for it in items_by_stop.get(s.id, []):
+            gal = it.gallons_delivered if it.gallons_delivered is not None else it.gallons_planned
+            bucket["gallons_by_product"][it.product] = round(bucket["gallons_by_product"].get(it.product, 0.0) + gal, 1)
+
+    for r in _runs_query(db, cid).filter(DeliveryRun.dispatched_at >= since).all():
+        if not r.dispatched_at:
+            continue
+        day = r.dispatched_at.date().isoformat()
+        bucket = buckets.get(day)
+        if bucket:
+            bucket["runs_dispatched"] += 1
+
+    rows = [buckets[k] for k in sorted(buckets.keys())]
+    return {
+        "days": days,
+        "rows": rows,
+        "total_gallons_delivered": round(sum(sum(r["gallons_by_product"].values()) for r in rows), 1),
+        "total_stops_completed": sum(r["stops_completed"] for r in rows),
+        "pricing_note": "Pricing/revenue totals aren't available yet — no per-gallon price source is wired up.",
+    }
+
+
+@router.get("/fleet/reports/shipments")
+def shipments_report(days: int = 30, user: User = Depends(_require_supplier), db: Session = Depends(get_db)):
+    """
+    One row per completed stop ("shipment") in the last `days` days —
+    station, tanker, driver, and planned-vs-delivered gallons per product
+    so a shortfall or overage jumps right out as a nonzero `variance`.
+    """
+    days = max(1, min(days, 180))
+    cid = _scope_customer_id(user)
+    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+
+    stops = (
+        _delivered_stops_query(db, cid)
+        .filter(DeliveryStop.arrived_at >= since)
+        .order_by(DeliveryStop.arrived_at.desc())
+        .all()
+    )
+    if not stops:
+        return {"days": days, "shipments": []}
+
+    runs = {r.id: r for r in db.query(DeliveryRun).filter(DeliveryRun.id.in_([s.delivery_run_id for s in stops])).all()}
+    loads = {l.id: l for l in db.query(TankerLoad).filter(TankerLoad.id.in_([r.tanker_load_id for r in runs.values()])).all()}
+    tankers = {t.id: t for t in db.query(Tanker).filter(Tanker.id.in_([l.tanker_id for l in loads.values()])).all()}
+    stations = {s.id: s for s in db.query(Station).filter(Station.id.in_([s.station_id for s in stops])).all()}
+    driver_ids = [r.driver_user_id for r in runs.values() if r.driver_user_id]
+    drivers = {d.id: d for d in db.query(User).filter(User.id.in_(driver_ids)).all()} if driver_ids else {}
+    items = db.query(DeliveryStopItem).filter(DeliveryStopItem.delivery_stop_id.in_([s.id for s in stops])).all()
+    items_by_stop: dict[int, list] = {}
+    for i in items:
+        items_by_stop.setdefault(i.delivery_stop_id, []).append(i)
+
+    shipments = []
+    for s in stops:
+        run = runs.get(s.delivery_run_id)
+        load = loads.get(run.tanker_load_id) if run else None
+        tanker = tankers.get(load.tanker_id) if load else None
+        driver = drivers.get(run.driver_user_id) if run and run.driver_user_id else None
+        station = stations.get(s.station_id)
+        shipments.append({
+            "stop_id": s.id, "run_id": s.delivery_run_id, "arrived_at": s.arrived_at,
+            "station_name": station.name if station else "?",
+            "tanker_label": tanker.label if tanker else "?",
+            "driver_email": driver.email if driver else None,
+            "items": [
+                {
+                    "product": it.product,
+                    "gallons_planned": it.gallons_planned,
+                    "gallons_delivered": it.gallons_delivered,
+                    "variance": round((it.gallons_delivered or 0.0) - it.gallons_planned, 1),
+                }
+                for it in items_by_stop.get(s.id, [])
+            ],
+        })
+    return {"days": days, "shipments": shipments}

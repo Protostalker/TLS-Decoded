@@ -14,7 +14,7 @@ import { api } from '../api/client.js'
 import TopBar from '../components/TopBar.jsx'
 import Footer from '../components/Footer.jsx'
 
-const TABS = ['Loading Racks', 'Tankers', 'Loads', 'Delivery Runs']
+const TABS = ['Loading Racks', 'Tankers', 'Loads', 'Delivery Runs', 'Reports']
 
 export default function FleetPage() {
   const [tab, setTab] = useState('Loading Racks')
@@ -37,6 +37,7 @@ export default function FleetPage() {
         {tab === 'Tankers' && <TankersTab />}
         {tab === 'Loads' && <LoadsTab />}
         {tab === 'Delivery Runs' && <RunsTab />}
+        {tab === 'Reports' && <ReportsTab />}
       </main>
       <Footer />
     </div>
@@ -74,7 +75,13 @@ function RacksTab() {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
-  const load = () => api.fleet.racks().then(setRacks).catch(e => setError(e.message))
+  // Block body on purpose: an arrow function with an expression body
+  // (`() => promise`) implicitly RETURNS that promise, and useEffect(load,
+  // []) would then treat the promise as its cleanup function and try to
+  // call it on unmount -- "TypeError: ... is not a function", crashing
+  // the whole page the moment you switch away from this tab. Wrapping the
+  // call in braces makes the effect return undefined instead.
+  const load = () => { api.fleet.racks().then(setRacks).catch(e => setError(e.message)) }
   useEffect(load, [])
 
   const create = async (e) => {
@@ -132,7 +139,8 @@ function TankersTab() {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
-  const load = () => api.fleet.tankers().then(setTankers).catch(e => setError(e.message))
+  // Block body — see RacksTab's load() above for why this matters.
+  const load = () => { api.fleet.tankers().then(setTankers).catch(e => setError(e.message)) }
   useEffect(load, [])
 
   const addRow = () => setCompartments(c => [...c, { label: `Tank ${c.length + 1}`, capacity_gallons: '' }])
@@ -464,11 +472,27 @@ function RunsTab() {
 }
 
 function RunCard({ run, onArrive }) {
+  const totalDistance = run.stops.reduce((sum, s) => sum + (s.distance_km || 0), 0)
+  const totalMinutes = run.stops.reduce((sum, s) => sum + (s.eta_minutes || 0), 0)
+  const delivered = run.stops.filter(s => s.status === 'delivered').length
+
   return (
     <div style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700 }}>Run #{run.id}</div>
-        <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)' }}>{run.status}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+        <div>
+          <span style={{ fontWeight: 700 }}>Run #{run.id}</span>
+          {run.driver_email && <span style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', marginLeft: 8 }}>🚚 {run.driver_email}</span>}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--brand-text-dimmer, #64748b)', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span>{delivered}/{run.stops.length} stops</span>
+          {totalDistance > 0 && <span>· {Math.round(totalDistance)} km</span>}
+          {totalMinutes > 0 && <span>· ~{Math.round(totalMinutes)} min total</span>}
+          <span style={{
+            padding: '2px 8px', borderRadius: 10,
+            background: run.status === 'completed' ? '#052e16' : '#1e3a5f',
+            color: run.status === 'completed' ? '#86efac' : '#93c5fd',
+          }}>{run.status}</span>
+        </div>
       </div>
       {run.stops.map(stop => (
         <div key={stop.id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)', padding: '10px 0' }}>
@@ -508,6 +532,115 @@ function RunCard({ run, onArrive }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Reports — daily output + a shipment-level log with planned-vs-delivered
+//    variance. Pricing is a clearly-labeled stub: there's no per-gallon
+//    price source wired up yet (see cloud-api's routers/fleet.py), so we
+//    show the server's own pricing_note rather than guessing at a number. ──
+function ReportsTab() {
+  const [daily, setDaily] = useState(null)
+  const [shipments, setShipments] = useState(null)
+  const [error, setError] = useState(null)
+
+  const load = () => {
+    api.fleet.reports.daily(14).then(setDaily).catch(e => setError(e.message))
+    api.fleet.reports.shipments(30).then(setShipments).catch(e => setError(e.message))
+  }
+  useEffect(load, [])
+
+  const allProducts = Array.from(new Set((daily?.rows || []).flatMap(r => Object.keys(r.gallons_by_product))))
+
+  return (
+    <div>
+      {error && <ErrorBox message={error} />}
+
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontWeight: 700 }}>Daily output — last {daily?.days ?? 14} days</div>
+          {daily && (
+            <div style={{ fontSize: 12, color: 'var(--brand-text-dim, #94a3b8)' }}>
+              <strong style={{ color: 'var(--brand-text, #e2e8f0)' }}>{daily.total_gallons_delivered.toLocaleString()}</strong> gal total
+              {' · '}<strong style={{ color: 'var(--brand-text, #e2e8f0)' }}>{daily.total_stops_completed}</strong> stops
+            </div>
+          )}
+        </div>
+
+        {daily && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
+              <thead>
+                <tr>
+                  <th style={th}>Date</th>
+                  <th style={th}>Stops</th>
+                  <th style={th}>Runs dispatched</th>
+                  {allProducts.map(p => <th key={p} style={th}>{p} (gal)</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {daily.rows.map(row => (
+                  <tr key={row.date} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
+                    <td style={td}>{row.date}</td>
+                    <td style={td}>{row.stops_completed}</td>
+                    <td style={{ ...td, color: 'var(--brand-text-dimmer, #64748b)' }}>{row.runs_dispatched}</td>
+                    {allProducts.map(p => (
+                      <td key={p} style={{ ...td, color: row.gallons_by_product[p] ? 'var(--brand-text, #e2e8f0)' : 'var(--brand-text-faint, #475569)' }}>
+                        {row.gallons_by_product[p] ? Math.round(row.gallons_by_product[p]).toLocaleString() : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ fontSize: 11, color: 'var(--brand-text-faint, #475569)', marginTop: 12, fontStyle: 'italic' }}>
+          💲 {daily?.pricing_note || 'Pricing not available yet.'}
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{ fontWeight: 700, marginBottom: 14 }}>Shipment log — last {shipments?.days ?? 30} days</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+            <thead>
+              <tr>
+                <th style={th}>Delivered</th>
+                <th style={th}>Station</th>
+                <th style={th}>Tanker</th>
+                <th style={th}>Driver</th>
+                <th style={th}>Products (planned → delivered)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shipments?.shipments.map(sh => (
+                <tr key={sh.stop_id} style={{ borderTop: '1px solid var(--brand-border-soft, #1e2130)' }}>
+                  <td style={td}>{new Date(sh.arrived_at).toLocaleString()}</td>
+                  <td style={td}>{sh.station_name}</td>
+                  <td style={{ ...td, color: 'var(--brand-text-dimmer, #64748b)' }}>{sh.tanker_label}</td>
+                  <td style={{ ...td, color: 'var(--brand-text-dimmer, #64748b)' }}>{sh.driver_email || '—'}</td>
+                  <td style={td}>
+                    {sh.items.map((it, i) => (
+                      <span key={i} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
+                        {it.product}: {Math.round(it.gallons_planned).toLocaleString()} → {Math.round(it.gallons_delivered ?? it.gallons_planned).toLocaleString()}
+                        {Math.abs(it.variance) > 0.5 && (
+                          <span style={{ color: it.variance < 0 ? '#f87171' : '#86efac', marginLeft: 4 }}>
+                            ({it.variance > 0 ? '+' : ''}{Math.round(it.variance)})
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {shipments?.shipments.length === 0 && <div style={{ color: 'var(--brand-text-faint, #475569)', padding: 12, fontSize: 12 }}>No completed shipments yet.</div>}
+      </div>
     </div>
   )
 }
